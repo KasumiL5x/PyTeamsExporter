@@ -52,6 +52,12 @@
 		<!-- Chats table (and easy de/select buttons). -->
 		<button id="chats_select_all" type="button" class="btn btn-dark btn-sm">Select All</button>
 		<button id="chats_select_none" type="button" class="btn btn-dark btn-sm">Select None</button>
+		<div class="btn-group" role="group" aria-label="Basic radio toggle button group">
+			<input id="rad_as_html" type="radio" class="btn-check" name="btnradio" autocomplete="off" checked>
+			<label class="btn btn-outline-primary" for="rad_as_html">As HTML</label>
+			<input id="rad_as_json" type="radio" class="btn-check" name="btnradio" autocomplete="off">
+			<label class="btn btn-outline-primary" for="rad_as_json">As JSON</label>
+		</div>
 		<br/><br/>
 		<div style="max-height: 70vh; overflow: auto;">
 			<table id="chats_table" class="table table-striped table-hover table-responsive">
@@ -212,6 +218,28 @@
 			evt.preventDefault();
 		});
 
+		function get_as_type_string() {
+			if($("#rad_as_html").prop('checked')) {
+				return 'html';
+			} else if($("#rad_as_json").prop('checked')) {
+				return 'json';
+			} else {
+				// Assume HTML by default. Should never trigger unless something goes wrong or I add another type.
+				return 'html';
+			}
+		}
+
+		function get_as_type_ext() {
+			if($("#rad_as_html").prop('checked')) {
+				return '.html';
+			} else if($("#rad_as_json").prop('checked')) {
+				return '.json';
+			} else {
+				// Assume HTML by default. Should never trigger unless something goes wrong or I add another type.
+				return '.html';
+			}
+		}
+
 		// Download chats button.
 		$('#download_chats').click(function(evt) {
 			const endpoint = location.origin + '/get_chat';
@@ -237,10 +265,13 @@
 					return;
 				}
 
+				const asTypeString = get_as_type_string();
+
 				// Get the chat ID and prepare it for the AJAX request.
 				const chat_id = chat_ids[index];
 				const data = {
-					chat_id: chat_id
+					chat_id: chat_id,
+					format: asTypeString
 				};
 
 				$.ajax({
@@ -258,7 +289,7 @@
 						document.body.appendChild(link);
 						link.style = 'display: none';
 						link.href = url;
-						link.download = chat_id + '.html';
+						link.download = chat_id + get_as_type_ext();
 						link.click();
 
 						setTimeout(() => {

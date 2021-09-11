@@ -332,14 +332,24 @@ def get_chat():
 
   # Write out the dictionary to a raw JSON file.
   with open('static/files/' + random_filename + '.json', 'w+', encoding="utf-8") as out_file:
-    out_file.write(json.dumps(final_data))
+    out_file.write(json.dumps(final_data, indent=2))
 
   # Convert the dictionary into a pretty HTML page and write that out.
   with open('static/files/' + random_filename + '.html', 'w+', encoding="utf-8") as out_file:
     out_file.write(json_to_html_chat(final_data))
+
+  # If there's a format, respect it. Otherwise, default to HTML.
+  should_return_html = True
+  format_key = 'format'
+  if format_key in flask.request.json:
+    should_return_html = flask.request.json[format_key] == 'html'
   
-  # Return the HTML file from disk.
-  return flask.send_file('static/files/' + random_filename + '.html', as_attachment=True)
+  if should_return_html:
+    # Return the HTML file from disk.
+    return flask.send_file('static/files/' + random_filename + '.html', as_attachment=True)
+  else:
+    # Return the JSON file from disk.
+    return flask.send_file('static/files/' + random_filename + '.json', as_attachment=True)
 
   # NOTE: I read online that this is safer and I shouldn't use `send_file`. Will look into it later.
   # return flask.send_from_directory('static/files', random_filename, as_attachment=True, max_age=0)
