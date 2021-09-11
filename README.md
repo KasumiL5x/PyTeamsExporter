@@ -37,9 +37,6 @@ Once signed in, press the `Get Chat History` button which will populate a table 
 
 Once desired chats are selected, press the `Download Selected Chats` button and you will be prompted to download all of the chats in a pretty HTML format.
 
-### Bugs
-For some reason, chats seem to be limited in count. I'm investigating this shortly.
-
 ### Limitations
 * Only HTML and text messages are currently supported. System messages will not be included.
 * Attachments are not considered. This includes images, which are stored on Microsoft's servers. I am considering a separate pass to download, compress, and send the images too, but only if there's a need for it and I have time to do so.
