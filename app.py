@@ -119,39 +119,60 @@ def get_all_chats():
   """Returns a JSON dictionary of all chats and associated metadata. This is NOT messages, but the chats themselves."""
   # NOTE: See `all_chats` below for the structure of the returned JSON.
 
+  print('Getting all chats...')
+
   # https://docs.microsoft.com/en-us/graph/api/chat-list?view=graph-rest-beta&tabs=http
+  next_link_key = '@odata.nextLink'
+  raw_chats = []
   base_url = RESOURCE + API_VERSION + '/'
-  raw_chats = MSGRAPH.get(base_url + 'me/chats?$expand=members', headers=request_headers()).json()
+  next_chat_url = base_url + 'me/chats?$expand=members'
+  req_index = 0
+  while True:
+    print(f'\trequest {req_index}')
+    # Get this round's chats.
+    tmp_chats = MSGRAPH.get(next_chat_url, headers=request_headers()).json()
+    if ('error' in tmp_chats) or ('value' not in tmp_chats):
+      break
+
+    # Update raw chats with this request's response.
+    raw_chats.extend(tmp_chats['value'])
+
+    # Process the next link if it's available.
+    if next_link_key not in tmp_chats or tmp_chats[next_link_key] is None:
+      break
+    else:
+      next_chat_url = tmp_chats[next_link_key]
+    
+    req_index += 1
+  #end while
 
   all_chats = []
 
-  if 'value' in raw_chats:
-    total_chats = len(raw_chats['value'])
-    print(f'Total chats: {total_chats}')
-    for chat in raw_chats['value']:
-      chat_id = chat['id']
-      chat_topic = chat['topic']
-      chat_type = chat['chatType']
-      chat_link = chat['webUrl']
+  total_chats = len(raw_chats)
+  print(f'Total chats: {total_chats}')
+  for chat in raw_chats:
+    chat_id = chat['id']
+    chat_topic = chat['topic']
+    chat_type = chat['chatType']
+    chat_link = chat['webUrl']
 
-      # Concatenate members with a maximum number.
-      members_data = chat['members']
-      total_members = len(members_data)
-      max_members = 4
-      members = [x['displayName'] for x in members_data[:min(total_members, max_members)]]
-      members_str = ', '.join(members)
-      if total_members > max_members:
-        members_str += ', ...'
-      
-      all_chats.append({
-        'id': chat_id,
-        'topic': chat_topic,
-        'type': chat_type,
-        'members': members_str,
-        'link': chat_link
-      })
-    #end for
-  #end if
+    # Concatenate members with a maximum number.
+    members_data = chat['members']
+    total_members = len(members_data)
+    max_members = 4
+    members = [x['displayName'] for x in members_data[:min(total_members, max_members)]]
+    members_str = ', '.join(members)
+    if total_members > max_members:
+      members_str += ', ...'
+    
+    all_chats.append({
+      'id': chat_id,
+      'topic': chat_topic,
+      'type': chat_type,
+      'members': members_str,
+      'link': chat_link
+    })
+  #end for
 
   return flask.Response(json.dumps(all_chats), mimetype='application/json')
 #end
@@ -290,9 +311,7 @@ def get_chat():
 
   # https://docs.microsoft.com/en-us/graph/api/chat-list-messages?view=graph-rest-beta&tabs=http
   next_link_key = '@odata.nextLink'
-  raw_messages = {
-    'value': []
-  }
+  raw_messages = []
   base_url = RESOURCE + API_VERSION + '/'
   last_msg_url = base_url + f'me/chats/{chat_id}/messages?$top=50'
   req_index = 0
@@ -306,7 +325,7 @@ def get_chat():
       break
 
     # Update the raw messages with this request's response.
-    raw_messages['value'].extend(tmp_messages['value'])
+    raw_messages.extend(tmp_messages['value'])
 
     if next_link_key not in tmp_messages or tmp_messages[next_link_key] is None:
       # If there are no more next links available, we're done.
@@ -319,15 +338,8 @@ def get_chat():
     req_index += 1
   #end while
 
-  # print(len(raw_messages['value']))
-  # print(json.dumps(raw_messages, indent=2))
-
-  # Double check that actual message data was received.
-  if 'error' in raw_messages:
-    return jsonify(message='Unable to retrieve chat messages.'), 400
-
   all_messages = []
-  for msg in raw_messages['value']:
+  for msg in raw_messages:
     # Only process user messages... for now.
     if msg['messageType'] != 'message':
       continue
