@@ -9,6 +9,22 @@ Tech stack with Python `3.9.7`:
 * `requests_oauthlib` for talking to the Microsoft Graph API.
 
 ## Usage
+### Registering an Azure Application
+To use the Microsoft Graph API, you need to have a registered Azure application. You can find instructions [here](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app) to get started.
+
+Once registered, you will need to make some small tweaks for a web application. Under the `Authentication` tab, add a new platform:
+
+* Add a new `Web` platform and set the redirect URIs to `http://localhost:5000` and `http://localhost:5000/login/authorized`.
+* Set the `Supported account types` to `Accounts in any organizational directory (Any Azure AD directory - Multitenant`).
+
+Go to the `Overview` tab and note down the `Application (client) ID` value.
+
+Next, under the `Certificates & secrets` tab, create a new client secret and **immediately note the key's value field down somewhere**.
+
+In `app.py`, set `CLIENT_ID` and `CLIENT_SECRET` to the two above values above, respectively.
+
+**Do not share these values with anybody else. They are private.**
+
 ### Starting Flask
 If you want to deploy this live, please look at [this page](https://flask.palletsprojects.com/en/1.1.x/deploying/#deployment) for help.
 
