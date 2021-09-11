@@ -261,11 +261,14 @@ def get_chat():
   if not len(chat_id):
     return jsonify(message='chat_id value was empty.'), 400
 
+  print(f'Processing chat {chat_id}...')
+
   # https://docs.microsoft.com/en-us/graph/api/chat-get?view=graph-rest-beta&tabs=http
   chat_base_url = RESOURCE + API_VERSION + '/'
   raw_chat = MSGRAPH.get(chat_base_url + f'/me/chats/{chat_id}?$expand=members', headers=request_headers()).json()
   # Double check that we can get the chat data (i.e., is the ID correct and does it return valid data).
   if 'error' in raw_chat:
+    print('Chat response contains an error.')
     return jsonify(message='Unable to retrieve chat metadata.'), 400
   
   # Build chat metadata dictionary.
@@ -283,9 +286,41 @@ def get_chat():
     'members': chat_members
   }
 
+  print(f'\tprocessing messages for chat {chat_id}...')
+
   # https://docs.microsoft.com/en-us/graph/api/chat-list-messages?view=graph-rest-beta&tabs=http
+  next_link_key = '@odata.nextLink'
+  raw_messages = {
+    'value': []
+  }
   base_url = RESOURCE + API_VERSION + '/'
-  raw_messages = MSGRAPH.get(base_url + f'me/chats/{chat_id}/messages', headers=request_headers()).json()
+  last_msg_url = base_url + f'me/chats/{chat_id}/messages?$top=50'
+  req_index = 0
+  while True:
+    print(f'\t\trequest {req_index}')
+
+    # Get this round's messages.
+    tmp_messages = MSGRAPH.get(last_msg_url, headers=request_headers()).json()
+    # If any response fails, just exit out.
+    if ('error' in tmp_messages) or ('value' not in tmp_messages):
+      break
+
+    # Update the raw messages with this request's response.
+    raw_messages['value'].extend(tmp_messages['value'])
+
+    if next_link_key not in tmp_messages or tmp_messages[next_link_key] is None:
+      # If there are no more next links available, we're done.
+      break
+    else:
+      # Otherwise, update the url for the next request.
+      last_msg_url = tmp_messages[next_link_key]
+    #end if
+
+    req_index += 1
+  #end while
+
+  # print(len(raw_messages['value']))
+  # print(json.dumps(raw_messages, indent=2))
 
   # Double check that actual message data was received.
   if 'error' in raw_messages:
@@ -330,6 +365,8 @@ def get_chat():
   # TODO: Come up with a more intelligent filename than a random uuid.
   random_filename = str(uuid.uuid4())
 
+  print('\tWriting files to disk...')
+
   # Write out the dictionary to a raw JSON file.
   with open('static/files/' + random_filename + '.json', 'w+', encoding="utf-8") as out_file:
     out_file.write(json.dumps(final_data, indent=2))
@@ -337,6 +374,8 @@ def get_chat():
   # Convert the dictionary into a pretty HTML page and write that out.
   with open('static/files/' + random_filename + '.html', 'w+', encoding="utf-8") as out_file:
     out_file.write(json_to_html_chat(final_data))
+
+  print('\tDone!')
 
   # If there's a format, respect it. Otherwise, default to HTML.
   should_return_html = True
