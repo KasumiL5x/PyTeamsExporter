@@ -216,6 +216,11 @@
 		$('#download_chats').click(function(evt) {
 			const endpoint = location.origin + '/get_chat';
 
+			// If no checkboxes are checked, ignore the request.
+			if($('.chat-checkbox:checked').length == 0) {
+				return;
+			}
+
 			// Change button to (down)loading mode.
 			const btn = $(this);
 			const loadingText = "<span class='spinner-border spinner-border-sm' role='status' aria-hidden='true'></span> Downloading...";
@@ -229,7 +234,7 @@
 			$('.chat-checkbox').each(function(index, el) {
 				const checked = $(el).prop('checked');
 				if(!checked) {
-					continue;
+					return;
 				}
 
 				// Get the chat ID and prepare it for the AJAX request.
