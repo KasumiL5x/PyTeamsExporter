@@ -128,7 +128,7 @@ def get_all_chats():
   next_chat_url = base_url + 'me/chats?$expand=members'
   req_index = 0
   while True:
-    print(f'\trequest {req_index}')
+    print(f'  request {req_index}')
     # Get this round's chats.
     tmp_chats = MSGRAPH.get(next_chat_url, headers=request_headers()).json()
     if ('error' in tmp_chats) or ('value' not in tmp_chats):
@@ -149,7 +149,7 @@ def get_all_chats():
   all_chats = []
 
   total_chats = len(raw_chats)
-  print(f'Total chats: {total_chats}')
+  print(f'Done! Total chats: {total_chats}')
   for chat in raw_chats:
     chat_id = chat['id']
     chat_topic = chat['topic']
@@ -282,7 +282,7 @@ def get_chat():
   if not len(chat_id):
     return jsonify(message='chat_id value was empty.'), 400
 
-  print(f'Processing chat {chat_id}...')
+  print(f'Processing chat {chat_id}')
 
   # https://docs.microsoft.com/en-us/graph/api/chat-get?view=graph-rest-beta&tabs=http
   chat_base_url = RESOURCE + API_VERSION + '/'
@@ -307,7 +307,7 @@ def get_chat():
     'members': chat_members
   }
 
-  print(f'\tprocessing messages for chat {chat_id}...')
+  print(f'  processing messages...')
 
   # https://docs.microsoft.com/en-us/graph/api/chat-list-messages?view=graph-rest-beta&tabs=http
   next_link_key = '@odata.nextLink'
@@ -316,7 +316,7 @@ def get_chat():
   last_msg_url = base_url + f'me/chats/{chat_id}/messages?$top=50'
   req_index = 0
   while True:
-    print(f'\t\trequest {req_index}')
+    print(f'    request {req_index}')
 
     # Get this round's messages.
     tmp_messages = MSGRAPH.get(last_msg_url, headers=request_headers()).json()
@@ -377,7 +377,8 @@ def get_chat():
   # TODO: Come up with a more intelligent filename than a random uuid.
   random_filename = str(uuid.uuid4())
 
-  print('\tWriting files to disk...')
+  print(f'  Done! Total messages: {len(all_messages)}')
+  print('  Writing files to disk...')
 
   # Write out the dictionary to a raw JSON file.
   with open('static/files/' + random_filename + '.json', 'w+', encoding="utf-8") as out_file:
@@ -387,7 +388,7 @@ def get_chat():
   with open('static/files/' + random_filename + '.html', 'w+', encoding="utf-8") as out_file:
     out_file.write(json_to_html_chat(final_data))
 
-  print('\tDone!')
+  print('Done!')
 
   # If there's a format, respect it. Otherwise, default to HTML.
   should_return_html = True
