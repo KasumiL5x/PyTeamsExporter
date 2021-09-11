@@ -206,7 +206,7 @@
 					btn.removeClass('disabled');
 
 					// Show an error toast.
-					const json_err = JSON.parse(xhr.responseText);
+					const json_err = JSON.parse(xhr.responseText || "{\"message\": \"Offline.\"}");
 					const toast_el = $('#toast_getchats');
 					toast_el.find('.toast-body').text("Failed to retrieve chat history (" + json_err.message + ")" );
 					toast_el.toast('show');
@@ -307,7 +307,7 @@
 						btn.removeClass('disabled');
 
 						// Show an error toast.
-						const json_err = JSON.parse(xhr.responseText);
+						const json_err = JSON.parse(xhr.responseText || "{\"message\": \"Offline.\"}");
 						const toast_el = $('#toast_downloadchats');
 						toast_el.find('.toast-body').text("Failed to download chats. (" + json_err.message + ")");
 						toast_el.toast('show');
