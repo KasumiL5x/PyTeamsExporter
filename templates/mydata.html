@@ -251,7 +251,7 @@
 
 			// Change button to (down)loading mode.
 			const btn = $(this);
-			const loadingText = "<span class='spinner-border spinner-border-sm' role='status' aria-hidden='true'></span> Downloading...";
+			const loadingText = "<span class='spinner-border spinner-border-sm' role='status' aria-hidden='true'></span> Downloading... (this may take a while)";
 			if(btn.html() !== loadingText) {
 				btn.data('original-text', btn.html());
 				btn.html(loadingText);
