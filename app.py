@@ -126,6 +126,13 @@ def get_all_chats():
 
   print('Getting all chats...')
 
+  # Get this user's display name so that we can find out who they are in a oneOnOne chat.
+  # I'd prefer to do this with email, but we have two emails and it seems to be different for account vs. Teams.
+  # https://docs.microsoft.com/en-us/graph/api/user-get?view=graph-rest-beta&tabs=http
+  base_url = RESOURCE + API_VERSION + '/'
+  user_profile = MSGRAPH.get(base_url + 'me', headers=request_headers()).json()
+  user_name = user_profile['displayName']
+
   # https://docs.microsoft.com/en-us/graph/api/chat-list?view=graph-rest-beta&tabs=http
   next_link_key = '@odata.nextLink'
   raw_chats = []
@@ -173,6 +180,15 @@ def get_all_chats():
     members_str = ', '.join(members)
     if total_members > max_members:
       members_str += ', ...'
+    
+    # If the chat is a oneOnOne, then there's no topic. Find the other user and make the topic their name.
+    # # Check for 2 explicitly as you can technically chat with yourself, which is 1.
+    if (chat_type == 'oneOnOne') and len(members_data) >= 2:
+      user_index = [idx for idx, el in enumerate(members_data) if el['displayName'] == user_name]
+      if len(user_index):
+        user_index = user_index[0]
+        other_name = members_data[1 - user_index]['displayName']
+        chat_topic = f'Chat with {other_name}'
     
     all_chats.append({
       'id': chat_id,
