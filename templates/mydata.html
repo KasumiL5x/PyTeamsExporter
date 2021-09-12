@@ -53,10 +53,10 @@
 		<button id="chats_select_all" type="button" class="btn btn-dark btn-sm">Select All</button>
 		<button id="chats_select_none" type="button" class="btn btn-dark btn-sm">Select None</button>
 		<div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-			<input id="rad_as_html" type="radio" class="btn-check" name="btnradio" autocomplete="off" checked>
-			<label class="btn btn-outline-primary" for="rad_as_html">As HTML</label>
-			<input id="rad_as_json" type="radio" class="btn-check" name="btnradio" autocomplete="off">
-			<label class="btn btn-outline-primary" for="rad_as_json">As JSON</label>
+			<input id="rad_chat_with_attachments" type="radio" class="btn-check" name="btnradio" autocomplete="off" checked>
+			<label class="btn btn-outline-primary" for="rad_chat_with_attachments">Chat + Attachments</label>
+			<input id="rad_chat_only" type="radio" class="btn-check" name="btnradio" autocomplete="off">
+			<label class="btn btn-outline-primary" for="rad_chat_only">Chat Only</label>
 		</div>
 		<br/><br/>
 		<div style="max-height: 70vh; overflow: auto;">
@@ -218,26 +218,14 @@
 			evt.preventDefault();
 		});
 
-		function get_as_type_string() {
-			if($("#rad_as_html").prop('checked')) {
-				return 'html';
-			} else if($("#rad_as_json").prop('checked')) {
-				return 'json';
-			} else {
-				// Assume HTML by default. Should never trigger unless something goes wrong or I add another type.
-				return 'html';
+		function get_include_attachments() {
+			if($('#rad_chat_with_attachments').prop('checked')) {
+				return true;
+			} else if($('#rad_chat_only').prop('checked')) {
+				return false;
 			}
-		}
 
-		function get_as_type_ext() {
-			if($("#rad_as_html").prop('checked')) {
-				return '.html';
-			} else if($("#rad_as_json").prop('checked')) {
-				return '.json';
-			} else {
-				// Assume HTML by default. Should never trigger unless something goes wrong or I add another type.
-				return '.html';
-			}
+			return false;
 		}
 
 		// Download chats button.
@@ -265,31 +253,72 @@
 					return;
 				}
 
-				const asTypeString = get_as_type_string();
-
 				// Get the chat ID and prepare it for the AJAX request.
 				const chat_id = chat_ids[index];
 				const data = {
 					chat_id: chat_id,
-					format: asTypeString
+					include_attachments: get_include_attachments()
 				};
+
+				// https://stackoverflow.com/a/50920334
+				// use this transport for "binary" data type
+				$.ajaxTransport("+binary", function (options, originalOptions, jqXHR) {
+						// check for conditions and support for blob / arraybuffer response type
+						if (window.FormData && ((options.dataType && (options.dataType == 'binary')) || (options.data && ((window.ArrayBuffer && options.data instanceof ArrayBuffer) || (window.Blob && options.data instanceof Blob))))) {
+								return {
+										// create new XMLHttpRequest
+										send: function (headers, callback) {
+												// setup all variables
+												var xhr = new XMLHttpRequest(),
+														url = options.url,
+														type = options.type,
+														async = options.async || true,
+														// blob or arraybuffer. Default is blob
+														dataType = options.responseType || "blob",
+														data = options.data || null,
+														username = options.username || null,
+														password = options.password || null;
+
+												xhr.addEventListener('load', function () {
+														var data = {};
+														data[options.dataType] = xhr.response;
+														// make callback and send data
+														callback(xhr.status, xhr.statusText, data, xhr.getAllResponseHeaders());
+												});
+
+												xhr.open(type, url, async, username, password);
+
+												// setup custom headers
+												for (var i in headers) {
+														xhr.setRequestHeader(i, headers[i]);
+												}
+
+												xhr.responseType = dataType;
+												xhr.send(data);
+										},
+										abort: function () {
+												jqXHR.abort();
+										}
+								};
+						}
+				});
 
 				$.ajax({
 					type: 'POST',
 					url: endpoint,
 					data: JSON.stringify(data),
 					contentType: 'application/json', // What we are sending in `data`.
-					dataType: 'text', // What we expect to get back.
+					dataType: 'binary', // What we expect to get back.
 					success: function(res) {
 						// Prepare the response data and ask the browser to save it to file.
 						// https://stackoverflow.com/a/56581061
-						var blob = new Blob([res], {type: 'text'});
+						var blob = new Blob([res], {type: 'application/octet-stream'});
 						var url = window.URL.createObjectURL(blob);
 						var link = document.createElement('a');
 						document.body.appendChild(link);
 						link.style = 'display: none';
 						link.href = url;
-						link.download = chat_id + get_as_type_ext();
+						link.download = chat_id + '.zip';
 						link.click();
 
 						setTimeout(() => {

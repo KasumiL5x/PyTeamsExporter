@@ -1,7 +1,11 @@
+import re
+import os
+import shutil
 import json
 import uuid
 import flask
 from flask.json import jsonify
+from oauthlib.oauth2.rfc6749.clients import base
 from requests_oauthlib import OAuth2Session
 
 from functools import wraps
@@ -12,7 +16,8 @@ CLIENT_SECRET = 'YOUR_CLIENT_SECRET'
 REDIRECT_URI = 'http://localhost:5000/login/authorized'
 SCOPES = [
   "User.Read",
-  "Chat.Read"
+  "Chat.Read",
+  "Files.Read"
 ]
 # URLs and endpoints for authorization.
 AUTHORITY_URL = 'https://login.microsoftonline.com/common'
@@ -128,7 +133,11 @@ def get_all_chats():
   next_chat_url = base_url + 'me/chats?$expand=members'
   req_index = 0
   while True:
-    print(f'  request {req_index}')
+    if req_index == 0:
+      print(f'  Request {req_index} ', end='', flush=True)
+    else:
+      print(f'{req_index} ', end='', flush=True)
+
     # Get this round's chats.
     tmp_chats = MSGRAPH.get(next_chat_url, headers=request_headers()).json()
     if ('error' in tmp_chats) or ('value' not in tmp_chats):
@@ -149,7 +158,7 @@ def get_all_chats():
   all_chats = []
 
   total_chats = len(raw_chats)
-  print(f'Done! Total chats: {total_chats}')
+  print(f'\nTotal chats: {total_chats}')
   for chat in raw_chats:
     chat_id = chat['id']
     chat_topic = chat['topic']
@@ -260,39 +269,82 @@ def json_to_html_chat(data):
   return html_string
 #end
 
+supported_image_types = ['.png', '.jpg', '.gif', '.svg', '.webp']
+def content_type_to_file_ext(content_type):
+  if content_type == 'image/png':
+    return '.png'
+  elif content_type == 'image/jpeg':
+    return '.jpg'
+  elif content_type == 'image/gif':
+    return '.gif'
+  elif content_type == 'image/svg+xml':
+    return '.svg'
+  elif content_type == 'image/webp':
+    return '.webp'
+  else:
+    return None
+
 @APP.route('/get_chat', methods=['POST'])
 @requires_auth
 def get_chat():
   """
   Given a chat id, retrieves chat metadata and all messages. This is stored in JSON and pretty HTML
   on the server, and the generated HTML file is then sent back to the browser as a file to download.
+
+  Expected JSON input to this request is:
+  {
+    "chat_id": "the_chat_id",
+    "include_attachments": true/false
+  }
   """
 
   # Broadly sanity check input data type.
   if not flask.request.is_json:
     return jsonify(message='Input was not JSON.'), 400
 
-  # Make sure the appropriate JSON entry is present.
+  # Make sure all required keys are present.
   chat_id_key = 'chat_id'
+  include_attachments_key = 'include_attachments'
   if chat_id_key not in flask.request.json:
-    return jsonify(message='Failed to find chat_id entry.'), 400
+    return jsonify(message=f'Failed to find {chat_id_key} entry.'), 400
+  if include_attachments_key not in flask.request.json:
+    return jsonify(message=f'Failed to find {include_attachments_key} entry.'), 400
   
-  # Make sure the passed in value actually has data.
+  # Make sure the keys have valid data.
   chat_id = flask.request.json[chat_id_key]
   if not len(chat_id):
-    return jsonify(message='chat_id value was empty.'), 400
+    return jsonify(message=f'{chat_id_key} value was empty.'), 400
+  include_attachments = flask.request.json[include_attachments_key]
+  if not isinstance(include_attachments, bool):
+    return jsonify(message=f'{include_attachments_key} value was the wrong type (expected bool).'), 400
 
   print(f'Processing chat {chat_id}')
 
+  # Retrieve the chat metadata.
   # https://docs.microsoft.com/en-us/graph/api/chat-get?view=graph-rest-beta&tabs=http
   chat_base_url = RESOURCE + API_VERSION + '/'
-  raw_chat = MSGRAPH.get(chat_base_url + f'/me/chats/{chat_id}?$expand=members', headers=request_headers()).json()
-  # Double check that we can get the chat data (i.e., is the ID correct and does it return valid data).
+  raw_chat = MSGRAPH.get(chat_base_url + f'me/chats/{chat_id}?$expand=members', headers=request_headers()).json()
   if 'error' in raw_chat:
     print('Chat response contains an error.')
     return jsonify(message='Unable to retrieve chat metadata.'), 400
   
-  # Build chat metadata dictionary.
+  # Major failure points are now over, so we can safely create the root folder for this chat now.
+  random_filename = str(uuid.uuid4())
+  root_folder = 'static/files/' + random_filename + '/'
+  # https://stackoverflow.com/a/50901481
+  old_umask = os.umask(0o666)
+  os.makedirs(root_folder)
+  # Repeat for attachments if needed.
+  attachments_folder = 'attachments'
+  attachments_root_folder = root_folder + attachments_folder + '/'
+  os.makedirs(attachments_root_folder) # NOTE: Always make this as hosted images use the same folder... for now.
+  os.umask(old_umask)
+
+  # Strings in attachment URLs that will force them to be not downloaded and just linked to.
+  attachment_ignores = ['sharepoint.com']
+
+  
+  # Build chat metadata.
   chat_members = []
   for member in raw_chat['members']:
     member_name = member['displayName']
@@ -307,7 +359,13 @@ def get_chat():
     'members': chat_members
   }
 
-  print(f'  processing messages...')
+  # Write out the chat metadata to file.
+  print('  Writing metadata...', end='')
+  with open(root_folder + 'metadata.json', 'w+', encoding="utf-8") as out_file:
+    out_file.write(json.dumps(chat_data, indent=2))
+  print('done!')
+
+  print(f'  Processing messages...')
 
   # https://docs.microsoft.com/en-us/graph/api/chat-list-messages?view=graph-rest-beta&tabs=http
   next_link_key = '@odata.nextLink'
@@ -316,7 +374,10 @@ def get_chat():
   last_msg_url = base_url + f'me/chats/{chat_id}/messages?$top=50'
   req_index = 0
   while True:
-    print(f'    request {req_index}')
+    if req_index == 0:
+      print(f'  Request {req_index} ', end='', flush=True)
+    else:
+      print(f'{req_index} ', end='', flush=True)
 
     # Get this round's messages.
     tmp_messages = MSGRAPH.get(last_msg_url, headers=request_headers()).json()
@@ -324,49 +385,180 @@ def get_chat():
     if ('error' in tmp_messages) or ('value' not in tmp_messages):
       break
 
-    # Update the raw messages with this request's response.
-    raw_messages.extend(tmp_messages['value'])
+    # NOTE: The way the below messages are appended is awkward, but here's why it's like this.
+    # There seems to be a bug where the @odata.nextLink repeats forever, creating infinite requests.
+    # Because of this bug, we can't guarantee that data needs adding NOW before the below key check.
+    # If there is no next key, we do need to add the current response and break from the loop.
+    # However, if there is a key, we need to conditionally add the current response based on the above bug.
+    # That's why the below code is a bit fugly, but it does work.
+    # If this is not done, then the latest message will be duplicated at the start...?
+    # TODO: Investigate this in more detail as it may be an oversight in other unused dictionary values.
 
     if next_link_key not in tmp_messages or tmp_messages[next_link_key] is None:
+      # Update the raw messages with this request's response.
+      raw_messages.extend(tmp_messages['value'])
       # If there are no more next links available, we're done.
       break
     else:
+      # There seems to be a bug where the same 'next link' is returned. Exit out if this happens.
+      if last_msg_url == tmp_messages[next_link_key]:
+        break
       # Otherwise, update the url for the next request.
       last_msg_url = tmp_messages[next_link_key]
+      # Update the raw messages with this request's response.
+      raw_messages.extend(tmp_messages['value'])
     #end if
 
     req_index += 1
   #end while
+  print('')
 
+  attachment_lookup = {} # {id:index_in_all_attachments}
+  all_attachments = []
   all_messages = []
+  total_hosted_images = 0
   for msg in raw_messages:
     # Only process user messages... for now.
     if msg['messageType'] != 'message':
       continue
 
+    # Build message data.
     msg_entry = {}
     msg_entry['from'] = msg['from']['user']['displayName']
     msg_entry['when'] = msg['createdDateTime']
     msg_entry['type'] = msg['body']['contentType']
-    # Only handle certain types of content for now.
-    if msg['body']['contentType'] in ['text', 'html']:
+    if msg_entry['type'] in ['text', 'html']:
       msg_entry['content'] = msg['body']['content']
     else:
       msg_entry['content'] = ''
 
-    all_messages.append(msg_entry)
+    # Messages can host content such as images (and perhaps videos).
+    # To display these, they need to be downloaded locally and the HTML needs swapping out.
+    # The below code handles <img> tags with hosed content.
+    all_img_tags = re.findall(r"<img\s*.*?>", msg_entry['content'])
+    # Download each of the images from the raw bytes that MSGRAPH provides.
+    hosted_img_index = 0
+    for img_tag in all_img_tags:
+      # This will pull all images (including emoji), so only process those with a MSGRAPH url.
+      if 'graph.microsoft.com' not in img_tag:
+        continue
+
+      print(f'  Downloading hosted image {hosted_img_index+1}...', end='', flush=True)
+
+      # Extract and request the actual data.
+      img_src = re.findall(r"src=\"(.+?)\"", img_tag)[0]
+      img_data = MSGRAPH.get(img_src, headers=request_headers())
+
+      # Create a random filename for the file (reading the type from content-type).
+      img_name = str(uuid.uuid4())
+      img_type = img_data.headers['content-type']
+      file_ext = content_type_to_file_ext(img_type)
+      if file_ext is None:
+        print(f'Warning: Undetected <img> type: {img_type}')
+        continue
+      else:
+        img_name += file_ext
+
+      # Write out the file.
+      with open(attachments_root_folder + img_name, 'wb+') as out_file:
+        out_file.write(img_data.content)
+
+      # Swap the src for the local version.
+      img_tag_new = re.sub(r"src=\"(.+?)\"", f"src=\"{attachments_folder}/{img_name}\"", img_tag)
+      # Replace the original string.
+      msg_entry['content'] = msg_entry['content'].replace(img_tag, img_tag_new)
+
+      print('done!')
+
+      hosted_img_index += 1
+      total_hosted_images += 1
+    #end for
     
-    # TODO: Consider attachments.
-    # https://docs.microsoft.com/en-us/graph/api/attachment-get?view=graph-rest-beta&tabs=http
-    # Maybe I can have them downloaded in advance then inserted in with a link or something?
-    # Perhaps I can download them all, zip them up, then send the zip back?
-    # Perhaps this is a separate button in the UI in each row?
-    # Need to think about this. Messages for now, as those are the focus.
+    # Each message determines which attachments it includes. We also want them.
+    if include_attachments:
+      # Build a list of all attachments for this message.
+      for attachment in msg['attachments']:
+        # Thumbnails are used for link previews. I'm ignoring these.
+        ignore_types = ['application/vnd.microsoft.card.thumbnail']
+        if attachment['contentType'] in ignore_types:
+          continue
+
+        attachment_entry = {
+          'id': attachment['id'],
+          'link': attachment['contentUrl'],
+          'name': attachment['name']
+        }
+
+        # NOTE: Sometimes the name is empty. I should be ignoring those that cause it, but debug printing just in case.
+        if(attachment_entry['name'] is None):
+          print('! WARNING ! Attachment name is null.')
+          print(json.dumps(attachment, indent=2))
+          continue
+
+        # Local path to the file relative to the root folder.
+        attachment_entry['path'] = attachments_folder + '/' + attachment_entry['name']
+
+        # Add this attachment to the list of all attachments and add a lookup entry into that based on its ID.
+        # These values are used below and later when actually processing and downloading the attachments.
+        all_attachments.append(attachment_entry)
+        attachment_lookup[attachment_entry['id']] = len(all_attachments)-1
+      #end for
+
+      # Attachments are inserted with a custom <attachment> tag. This code replaces those tags accordingly.
+      all_attachment_tags = re.findall(r"<attachment\s*.*?><\/attachment>", msg_entry['content'])
+      # Build a new HTML tag for each of the attachment entries.
+      new_attachment_tags = []
+      for tag in all_attachment_tags:
+        tag_id = re.findall(r"id=\"(.+?)\"", tag)[0]
+        # We don't capture all attachments, so ignore those that don't have a lookup value.
+        if tag_id not in attachment_lookup:
+          continue
+
+        # Lookup the actual attachment that we saved above based on the ID.
+        original_attachment = all_attachments[attachment_lookup[tag_id]]
+        # Build out several properties for the URL.
+        use_original_link = any([x in original_attachment['link'] for x in attachment_ignores])
+        attachment_path = original_attachment['link'] if use_original_link else original_attachment['path']
+        attachment_name = original_attachment['name']
+        # If an image extension is in the name, use an <img> tag, otherwise use a standard <a> tag.
+        if any([attachment_path.endswith(x) for x in supported_image_types]):
+          new_attachment_tags.append(f'<img src=\"{attachment_path}\" class=\"img-fluid\">')
+        else:
+          new_attachment_tags.append(f'<a href=\"{attachment_path}\" target=\"_blank\">ATTACHMENT: {attachment_name}</a>')
+      #end for
+
+      # Replace the original tags with the new tags.
+      for tag, new_tag in zip(all_attachment_tags, new_attachment_tags):
+        msg_entry['content'] = msg_entry['content'].replace(tag, new_tag)
+      #end for
+    #end if include_attachments
+
+    all_messages.append(msg_entry)
   #end for
 
-  # If no messages are present, return an error.
-  if not len(all_messages):
-    return jsonify(message='No valid messages found in chat.'), 400
+  print(f'  Total messages: {len(all_messages)}; Total attachments: {len(all_attachments)}; Total hosted content: {total_hosted_images}')
+  if len(all_attachments):
+    print(f'  Processing attachments...')
+    print(f'    Writing attachments.json...', end='', flush=True)
+    with open(root_folder + 'attachments.json', 'w+', encoding="utf-8") as out_file:
+      out_file.write(json.dumps(all_attachments, indent=2))
+    print('done!')
+    for idx, attachment in enumerate(all_attachments):
+      print(f'    {idx+1}/{len(all_attachments)}...', end='', flush=True)
+
+      should_ignore = any([x in original_attachment['link'] for x in attachment_ignores])
+      if should_ignore:
+        print('ignored (protected link).')
+        continue
+
+      # TODO: Download attachments here with failsafe checking (404, 401, etc.).
+      # att_req = MSGRAPH.get(attachment['link'], headers=request_headers())
+      # print(att_req)
+      # print(att_req.content)
+      print('done!')
+    #end for
+    print(f'  Done!')
+  #end if
 
   # Concatenate the final data that will be converted and saved out.
   final_data = {
@@ -374,34 +566,22 @@ def get_chat():
     'messages': all_messages
   }
 
-  # TODO: Come up with a more intelligent filename than a random uuid.
-  random_filename = str(uuid.uuid4())
-
-  print(f'  Done! Total messages: {len(all_messages)}')
-  print('  Writing files to disk...')
-
   # Write out the dictionary to a raw JSON file.
-  with open('static/files/' + random_filename + '.json', 'w+', encoding="utf-8") as out_file:
+  with open(root_folder + 'chat.json', 'w+', encoding="utf-8") as out_file:
     out_file.write(json.dumps(final_data, indent=2))
 
   # Convert the dictionary into a pretty HTML page and write that out.
-  with open('static/files/' + random_filename + '.html', 'w+', encoding="utf-8") as out_file:
+  with open(root_folder + 'chat.html', 'w+', encoding="utf-8") as out_file:
     out_file.write(json_to_html_chat(final_data))
+
+  # Create a zip of the root folder.
+  print('  Compressing data...', end='', flush=True)
+  shutil.make_archive(f'static/files/{random_filename}', 'zip', root_folder)
+  print('done!')
 
   print('Done!')
 
-  # If there's a format, respect it. Otherwise, default to HTML.
-  should_return_html = True
-  format_key = 'format'
-  if format_key in flask.request.json:
-    should_return_html = flask.request.json[format_key] == 'html'
-  
-  if should_return_html:
-    # Return the HTML file from disk.
-    return flask.send_file('static/files/' + random_filename + '.html', as_attachment=True)
-  else:
-    # Return the JSON file from disk.
-    return flask.send_file('static/files/' + random_filename + '.json', as_attachment=True)
+  return flask.send_file(f'static/files/{random_filename}' + '.zip', as_attachment=True, mimetype='application/octet-stream')
 
   # NOTE: I read online that this is safer and I shouldn't use `send_file`. Will look into it later.
   # return flask.send_from_directory('static/files', random_filename, as_attachment=True, max_age=0)
