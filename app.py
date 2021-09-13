@@ -177,6 +177,7 @@ def get_all_chats():
     total_members = len(members_data)
     max_members = 4
     members = [x['displayName'] for x in members_data[:min(total_members, max_members)]]
+    members = [x for x in members if x is not None]
     members_str = ', '.join(members)
     if total_members > max_members:
       members_str += ', ...'
