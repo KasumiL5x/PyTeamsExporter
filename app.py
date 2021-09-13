@@ -441,7 +441,11 @@ def get_chat():
 
     # Build message data.
     msg_entry = {}
-    msg_entry['from'] = msg['from']['user']['displayName']
+    #
+    msg_user = msg['from']['user']
+    is_user_valid = (msg_user is not None) and ('displayName' in msg_user) and (msg_user['displayName'] is not None)
+    msg_entry['from'] = 'INVALID USER' if not is_user_valid else msg_user['displayName']
+    #
     msg_entry['when'] = msg['createdDateTime']
     msg_entry['type'] = msg['body']['contentType']
     if msg_entry['type'] in ['text', 'html']:
