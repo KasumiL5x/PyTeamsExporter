@@ -537,13 +537,10 @@ def get_chat():
         # Lookup the actual attachment that we saved above based on the ID.
         original_attachment = all_attachments[attachment_lookup[tag_id]]
         # Build out several properties for the URL.
-        use_original_link = [x in original_attachment['link'] for x in attachment_ignores]
-        if use_original_link is None:
-          tmp_out = original_attachment['link']
-          print(f'Original link result is None: {tmp_out}' )
-          use_original_link = False
-        else:
-          use_original_link = any(use_original_link)
+        if original_attachment['link'] is None:
+          print(f'ERROR: Attachment has no link: {original_attachment}')
+          continue
+        use_original_link = any([x in original_attachment['link'] for x in attachment_ignores])
         attachment_path = original_attachment['link'] if use_original_link else original_attachment['path']
         attachment_name = original_attachment['name']
         # If an image extension is in the name, use an <img> tag, otherwise use a standard <a> tag.
