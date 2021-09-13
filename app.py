@@ -508,6 +508,8 @@ def get_chat():
 
       # Swap the src for the local version.
       img_tag_new = re.sub(r"src=\"(.+?)\"", f"src=\"{attachments_folder}/{img_name}\"", img_tag)
+      # These tags don't have any class, so replace the <img at the start with an appended Bootstrap tag.
+      img_tag_new = re.sub("^<img", "<img class=\"img-fluid img-thumbnail\"", img_tag_new)
       # Replace the original string.
       msg_entry['content'] = msg_entry['content'].replace(img_tag, img_tag_new)
 
@@ -571,7 +573,7 @@ def get_chat():
         attachment_name = original_attachment['name']
         # If an image extension is in the name, use an <img> tag, otherwise use a standard <a> tag.
         if any([attachment_path.endswith(x) for x in supported_image_types]):
-          new_attachment_tags.append(f'<img src=\"{attachment_path}\" class=\"img-fluid\">')
+          new_attachment_tags.append(f'<img src=\"{attachment_path}\" class=\"img-fluid img-thumbnail\">')
         else:
           new_attachment_tags.append(f'<a href=\"{attachment_path}\" target=\"_blank\">ATTACHMENT: {attachment_name}</a>')
       #end for
