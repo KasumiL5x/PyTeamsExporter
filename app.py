@@ -349,11 +349,11 @@ def get_chat():
   root_folder = 'static/files/' + random_filename + '/'
   # https://stackoverflow.com/a/50901481
   old_umask = os.umask(0o666)
-  os.makedirs(root_folder)
+  os.makedirs(root_folder, exist_ok=True)
   # Repeat for attachments if needed.
   attachments_folder = 'attachments'
   attachments_root_folder = root_folder + attachments_folder + '/'
-  os.makedirs(attachments_root_folder) # NOTE: Always make this as hosted images use the same folder... for now.
+  os.makedirs(attachments_root_folder, exist_ok=True) # NOTE: Always make this as hosted images use the same folder... for now.
   os.umask(old_umask)
 
   # Strings in attachment URLs that will force them to be not downloaded and just linked to.
@@ -618,4 +618,12 @@ def request_headers(headers=None):
 #end
 
 if __name__ == '__main__':
+  # Make sure the static/files directory definitely exists upon start.
+  static_files_path = 'static/files/'
+  # https://stackoverflow.com/a/50901481
+  old_umask = os.umask(0o666)
+  os.makedirs(static_files_path, exist_ok=True)
+  os.umask(old_umask)
+
+  # Run the server.
   APP.run()
