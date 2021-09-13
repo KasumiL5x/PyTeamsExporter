@@ -314,7 +314,7 @@ def json_to_html_chat(data):
     html_string += f"\t\t\t\t<div class=\"fw-bold\">{msg_from}</div>\n"
     html_string += f"\t\t\t\t{msg_content}\n"
     html_string += "\t\t\t</div>\n"
-    html_string += f"\t\t\t<span class=\"badge bg-primary rounded-pill\">{msg_timestamp}</span>\n"
+    html_string += f"\t\t\t<span class=\"badge bg-primary\">{msg_timestamp}</span>\n"
     html_string += "\t\t</li>\n"
   #end
   html_string += "\t</ul>\n\n"
