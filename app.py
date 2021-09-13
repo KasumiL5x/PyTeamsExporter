@@ -5,7 +5,6 @@ import json
 import uuid
 import flask
 from flask.json import jsonify
-from oauthlib import oauth2
 from requests_oauthlib import OAuth2Session
 
 from functools import wraps
@@ -17,7 +16,8 @@ REDIRECT_URI = 'http://localhost:5000/login/authorized'
 SCOPES = [
   "User.Read",
   "Chat.Read",
-  "Files.Read"
+  "Files.Read",
+  "offline_access"
 ]
 # URLs and endpoints for authorization.
 AUTHORITY_URL = 'https://login.microsoftonline.com/common'
@@ -47,9 +47,30 @@ def get_authorized_oauth():
   Creates a new OAuth2Session object based on the user's current access token.
   This should only be called from places where @requires_auth has passed to ensure a valid token.
   """
-  token = flask.session['access_token']
-  state = flask.session['state']
-  return OAuth2Session(CLIENT_ID, redirect_uri=REDIRECT_URI, scope=SCOPES, state=state, token=token)
+
+  refresh_url = AUTHORITY_URL + TOKEN_ENDPOINT
+  extra = {
+    'client_id': CLIENT_ID,
+    'client_secret': CLIENT_SECRET
+  }
+
+  def save_new_token(tok):
+    flask.session['access_token'] = tok
+  
+  current_token = flask.session['access_token']
+  current_state = flask.session['state']
+
+  return OAuth2Session(
+    CLIENT_ID,
+    token=current_token,
+    redirect_uri=REDIRECT_URI,
+    scope=SCOPES,
+    state=current_state,
+    auto_refresh_url=refresh_url,
+    auto_refresh_kwargs=extra,
+    token_updater=save_new_token
+  )
+#end
 
 @APP.route('/')
 def homepage():
