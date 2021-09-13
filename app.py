@@ -5,7 +5,7 @@ import json
 import uuid
 import flask
 from flask.json import jsonify
-from oauthlib.oauth2.rfc6749.clients import base
+from oauthlib import oauth2
 from requests_oauthlib import OAuth2Session
 
 from functools import wraps
@@ -38,8 +38,18 @@ if APP.secret_key == 'development':
   os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # allows http requests
   os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'  # allows tokens to contain additional permissions
 
-# Create initial connection to Microsoft Graph.
-MSGRAPH = OAuth2Session(CLIENT_ID, redirect_uri=REDIRECT_URI, scope=SCOPES)
+def get_blank_oauth(existing_state=None):
+  """Creates a new blank OAuth2Session object with no token. This should be used for creation and authorization."""
+  return OAuth2Session(CLIENT_ID, redirect_uri=REDIRECT_URI, scope=SCOPES, state=existing_state)
+
+def get_authorized_oauth():
+  """
+  Creates a new OAuth2Session object based on the user's current access token.
+  This should only be called from places where @requires_auth has passed to ensure a valid token.
+  """
+  token = flask.session['access_token']
+  state = flask.session['state']
+  return OAuth2Session(CLIENT_ID, redirect_uri=REDIRECT_URI, scope=SCOPES, state=state, token=token)
 
 @APP.route('/')
 def homepage():
@@ -56,8 +66,10 @@ def homepage():
 def login():
   """Redirects the user to the Microsoft login page (which in turn redirects back to this app)."""
 
+  oauth = get_blank_oauth()
+
   flask.session.clear()
-  auth_url, state = MSGRAPH.authorization_url(AUTHORITY_URL + AUTH_ENDPOINT)
+  auth_url, state = oauth.authorization_url(AUTHORITY_URL + AUTH_ENDPOINT)
   flask.session['state'] = state
   return flask.redirect(auth_url)
 #end
@@ -68,8 +80,10 @@ def authorized():
 
   if flask.session.get('state') and str(flask.session['state']) != str(flask.request.args.get('state')):
     raise Exception('state returned to redirect URL does not match!')
+
+  oauth = get_blank_oauth(existing_state=flask.session['state'])
   
-  token = MSGRAPH.fetch_token(
+  token = oauth.fetch_token(
     AUTHORITY_URL + TOKEN_ENDPOINT,
     client_secret=CLIENT_SECRET,
     authorization_response=flask.request.url
@@ -92,9 +106,11 @@ def requires_auth(f):
 
   @wraps(f)
   def decorated(*args, **kwargs):
+    # Doesn't have a valid access token.
     if 'access_token' not in flask.session:
       return flask.redirect('/login')
-    if not MSGRAPH.authorized:
+    # Check if it's authorized. This should always work unless the token has expired.
+    if not get_authorized_oauth().authorized:
       return flask.redirect('/login')
     return f(*args, **kwargs)
   #end
@@ -106,9 +122,11 @@ def requires_auth(f):
 def my_data():
   """Renders the 'my data' page if the user is logged in."""
 
+  oauth = get_authorized_oauth()
+
   # https://docs.microsoft.com/en-us/graph/api/user-get?view=graph-rest-beta&tabs=http
   base_url = RESOURCE + API_VERSION + '/'
-  user_profile = MSGRAPH.get(base_url + 'me', headers=request_headers()).json()
+  user_profile = oauth.get(base_url + 'me', headers=request_headers()).json()
   # If the request gives an error, try to get the user to login again.
   if 'error' in user_profile:
     return flask.redirect('/login')
@@ -124,13 +142,15 @@ def get_all_chats():
   """Returns a JSON dictionary of all chats and associated metadata. This is NOT messages, but the chats themselves."""
   # NOTE: See `all_chats` below for the structure of the returned JSON.
 
+  oauth = get_authorized_oauth()
+
   print('Getting all chats...')
 
   # Get this user's display name so that we can find out who they are in a oneOnOne chat.
   # I'd prefer to do this with email, but we have two emails and it seems to be different for account vs. Teams.
   # https://docs.microsoft.com/en-us/graph/api/user-get?view=graph-rest-beta&tabs=http
   base_url = RESOURCE + API_VERSION + '/'
-  user_profile = MSGRAPH.get(base_url + 'me', headers=request_headers()).json()
+  user_profile = oauth.get(base_url + 'me', headers=request_headers()).json()
   user_name = user_profile['displayName']
 
   # https://docs.microsoft.com/en-us/graph/api/chat-list?view=graph-rest-beta&tabs=http
@@ -146,7 +166,7 @@ def get_all_chats():
       print(f'{req_index} ', end='', flush=True)
 
     # Get this round's chats.
-    tmp_chats = MSGRAPH.get(next_chat_url, headers=request_headers()).json()
+    tmp_chats = oauth.get(next_chat_url, headers=request_headers()).json()
     if ('error' in tmp_chats) or ('value' not in tmp_chats):
       break
 
@@ -335,12 +355,14 @@ def get_chat():
   if not isinstance(include_attachments, bool):
     return jsonify(message=f'{include_attachments_key} value was the wrong type (expected bool).'), 400
 
+  oauth = get_authorized_oauth()
+
   print(f'Processing chat {chat_id}')
 
   # Retrieve the chat metadata.
   # https://docs.microsoft.com/en-us/graph/api/chat-get?view=graph-rest-beta&tabs=http
   chat_base_url = RESOURCE + API_VERSION + '/'
-  raw_chat = MSGRAPH.get(chat_base_url + f'me/chats/{chat_id}?$expand=members', headers=request_headers()).json()
+  raw_chat = oauth.get(chat_base_url + f'me/chats/{chat_id}?$expand=members', headers=request_headers()).json()
   if 'error' in raw_chat:
     print('Chat response contains an error.')
     return jsonify(message='Unable to retrieve chat metadata.'), 400
@@ -397,7 +419,7 @@ def get_chat():
       print(f'{req_index} ', end='', flush=True)
 
     # Get this round's messages.
-    tmp_messages = MSGRAPH.get(last_msg_url, headers=request_headers()).json()
+    tmp_messages = oauth.get(last_msg_url, headers=request_headers()).json()
     # If any response fails, just exit out.
     if ('error' in tmp_messages) or ('value' not in tmp_messages):
       break
@@ -468,7 +490,7 @@ def get_chat():
 
       # Extract and request the actual data.
       img_src = re.findall(r"src=\"(.+?)\"", img_tag)[0]
-      img_data = MSGRAPH.get(img_src, headers=request_headers())
+      img_data = oauth.get(img_src, headers=request_headers())
 
       # Create a random filename for the file (reading the type from content-type).
       img_name = str(uuid.uuid4())
@@ -579,7 +601,7 @@ def get_chat():
         continue
 
       # TODO: Download attachments here with failsafe checking (404, 401, etc.).
-      # att_req = MSGRAPH.get(attachment['link'], headers=request_headers())
+      # att_req = oauth.get(attachment['link'], headers=request_headers())
       # print(att_req)
       # print(att_req.content)
       print('done!')
