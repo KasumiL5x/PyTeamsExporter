@@ -501,7 +501,7 @@ def get_chat():
       for attachment in msg['attachments']:
         # Thumbnails are used for link previews. I'm ignoring these.
         # Ignoring code snippets for now. Will process them later.
-        ignore_types = ['application/vnd.microsoft.card.thumbnail', 'application/vnd.microsoft.card.codesnippet']
+        ignore_types = ['application/vnd.microsoft.card.thumbnail', 'application/vnd.microsoft.card.codesnippet', 'application/vnd.microsoft.card.adaptive']
         if attachment['contentType'] in ignore_types:
           continue
 
