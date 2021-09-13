@@ -378,7 +378,7 @@ def get_chat():
 
   # Write out the chat metadata to file.
   print('  Writing metadata...', end='')
-  with open(root_folder + 'metadata.json', 'w+', encoding="utf-8") as out_file:
+  with open(root_folder + 'metadata.json', 'w', encoding="utf-8") as out_file:
     out_file.write(json.dumps(chat_data, indent=2))
   print('done!')
 
@@ -477,7 +477,7 @@ def get_chat():
         img_name += file_ext
 
       # Write out the file.
-      with open(attachments_root_folder + img_name, 'wb+') as out_file:
+      with open(attachments_root_folder + img_name, 'wb') as out_file:
         out_file.write(img_data.content)
 
       # Swap the src for the local version.
@@ -560,7 +560,7 @@ def get_chat():
   if len(all_attachments):
     print(f'  Processing attachments...')
     print(f'    Writing attachments.json...', end='', flush=True)
-    with open(root_folder + 'attachments.json', 'w+', encoding="utf-8") as out_file:
+    with open(root_folder + 'attachments.json', 'w', encoding="utf-8") as out_file:
       out_file.write(json.dumps(all_attachments, indent=2))
     print('done!')
     for idx, attachment in enumerate(all_attachments):
@@ -587,11 +587,11 @@ def get_chat():
   }
 
   # Write out the dictionary to a raw JSON file.
-  with open(root_folder + 'chat.json', 'w+', encoding="utf-8") as out_file:
+  with open(root_folder + 'chat.json', 'w', encoding="utf-8") as out_file:
     out_file.write(json.dumps(final_data, indent=2))
 
   # Convert the dictionary into a pretty HTML page and write that out.
-  with open(root_folder + 'chat.html', 'w+', encoding="utf-8") as out_file:
+  with open(root_folder + 'chat.html', 'w', encoding="utf-8") as out_file:
     out_file.write(json_to_html_chat(final_data))
 
   # Create a zip of the root folder.
