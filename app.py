@@ -558,6 +558,10 @@ def get_chat():
           'name': attachment['name']
         }
 
+        # Links to tab pages of a chat count as attachments and always start with "tab::" in their ID. Ignore them.
+        if attachment_entry['id'].startswith('tab::'):
+          continue
+
         # NOTE: Sometimes the name is empty. I should be ignoring those that cause it, but debug printing just in case.
         if(attachment_entry['name'] is None):
           print('! WARNING ! Attachment name is null.')
