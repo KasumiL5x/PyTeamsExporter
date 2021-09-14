@@ -628,7 +628,33 @@ def get_chat():
           #end if (other)
         #end if (reference)
 
-        # # TODO: Process code snippets.
+        # TODO: Process message references.
+        if attachment['contentType'] == 'messageReference':
+          msgref_content = None if 'content' not in attachment else attachment['content']
+          if msgref_content is None:
+            print('Warning: Encountered messageReference but content was null. Skipping.')
+            print(json.dumps(attachment, indent=2))
+            continue
+          msgref_content = json.loads(msgref_content) # Convert JSON string into JSON object.
+          msgref_preview = None if 'messagePreview' not in msgref_content else msgref_content['messagePreview']
+          if msgref_preview is None:
+            print('Warning: Encountered messageReference but content.messagePreview was null. Skipping.')
+            print(json.dumps(attachment, indent=2))
+            continue
+          msgref_sender = msgref_content.get('messageSender', {}).get('user', {}).get('displayName', 'INVALID USER')
+
+          # Build HTML for a nested conversation element. This should play nice with the convert to HTML function.
+          msgref_html  = "<ul class=\"list-group\">\n"
+          msgref_html += "\t<li class=\"list-group-item list-group-item-action d-flex justify-content-between align-items-start list-group-item-secondary\">\n"
+          msgref_html += "\t\t<div class=\"me-auto\">\n"
+          msgref_html += f"\t\t\t<div class=\"fw-bold\">{msgref_sender}</div>\n"
+          msgref_html += f"\t\t\t<p>{msgref_preview}</p>\n"
+          msgref_html += "\t\t</div>\n"
+          msgref_html += "\t</li>\n"
+          msgref_html += "</ul>\n"
+          attachment_entry['html'] = msgref_html
+
+        # TODO: Process code snippets.
         if attachment['contentType'] == 'application/vnd.microsoft.card.codesnippet':
           print('Code snippet detected but not yet handled.')
           print(json.dumps(attachment, indent=2))
