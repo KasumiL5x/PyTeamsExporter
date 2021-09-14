@@ -266,6 +266,9 @@
 			}
 			btn.addClass('disabled');
 
+			// Also disable the get chat history button.
+			$("#get_chats").addClass("disabled");
+
 			// For all chat checkboxes...
 			$('.chat-checkbox').each(function(index, el) {
 				const checked = $(el).prop('checked');
@@ -349,11 +352,15 @@
 						// Restore the button back to its original state.
 						btn.html(btn.data('original-text'));
 						btn.removeClass('disabled');
+						// Same for the get chat history button.
+						$("#get_chats").removeClass("disabled");
 					},
 					error: function(xhr, msg, err) {
 						// Restore get chat history button back to its original state.
 						btn.html(btn.data('original-text'));
 						btn.removeClass('disabled');
+						// Same for the get chat history button.
+						$("#get_chats").removeClass("disabled");
 
 						// Show an error toast.
 						const json_err = JSON.parse(xhr.responseText || "{\"message\": \"Offline.\"}");
