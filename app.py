@@ -371,6 +371,11 @@ def video_ext_to_mime(ext):
   res = [k for k,v in supported_video_types.items() if v == ext]
   return None if not len(res) else res[0]
 
+@APP.route('/debug_request')
+@requires_auth
+def debug_request():
+  return ''
+
 @APP.route('/get_chat', methods=['POST'])
 @requires_auth
 def get_chat():
