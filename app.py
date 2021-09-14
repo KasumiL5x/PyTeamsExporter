@@ -327,7 +327,7 @@ def json_to_html_chat(data):
   return html_string
 #end
 
-supported_image_types = ['.png', '.jpg', '.gif', '.svg', '.webp']
+# TODO: Remove this function.
 def content_type_to_file_ext(content_type):
   if content_type == 'image/png':
     return '.png'
@@ -341,6 +341,35 @@ def content_type_to_file_ext(content_type):
     return '.webp'
   else:
     return None
+supported_image_types = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/svg+xml': '.svg',
+  'image/webp': '.webp'
+}
+def img_mime_to_ext(mime):
+  return supported_image_types.get(mime)
+def img_ext_to_mime(ext):
+  res = [k for k,v in supported_image_types.items() if v == ext]
+  return None if not len(res) else res[0]
+
+supported_video_types = {
+  'video/x-flv': '.flv',
+  'video/mp4': '.mp4',
+  'video/mpeg': '.m1v',
+  'video/ogg': '.ogg',
+  'video/webm': '.webm',
+  'video/x-m4v': '.m4v',
+  'video/quicktime': '.mov',
+  'video/x-msvideo': '.avi',
+  'video/x-ms-wmv': 'wmv'
+}
+def video_mime_to_ext(mime):
+  return supported_video_types.get(mime)
+def video_ext_to_mime(ext):
+  res = [k for k,v in supported_video_types.items() if v == ext]
+  return None if not len(res) else res[0]
 
 @APP.route('/get_chat', methods=['POST'])
 @requires_auth
@@ -546,30 +575,99 @@ def get_chat():
       for attachment in msg['attachments']:
         # Thumbnails are used for link previews. I'm ignoring these.
         # Ignoring code snippets for now. Will process them later.
-        ignore_types = ['application/vnd.microsoft.card.thumbnail', 'application/vnd.microsoft.card.codesnippet', 'application/vnd.microsoft.card.adaptive']
+        ignore_types = ['application/vnd.microsoft.card.thumbnail', 'application/vnd.microsoft.card.adaptive']
         if attachment['contentType'] in ignore_types:
           continue
 
-        # TODO: Process code snippets.
+        # print(json.dumps(attachment, indent=2))
+
+        # Links to tab pages of a chat count as attachments and always start with "tab::" in their ID. Ignore them.
+        if attachment['id'].startswith('tab::'):
+          continue
 
         attachment_entry = {
           'id': attachment['id'],
-          'link': attachment['contentUrl'],
-          'name': attachment['name']
+          # TODO: Once I add downloading, I'll likely need to add and later use:
+          # ? 'path': 'path_to_local_file_after_downloading',
+          # Something like: attachment_entry['path'] = attachments_folder + '/' + attachment_entry['name']
+          # If this is true, 'url' should also be set and valid.
+          'should_download': False,
+          'url': ''
         }
 
-        # Links to tab pages of a chat count as attachments and always start with "tab::" in their ID. Ignore them.
-        if attachment_entry['id'].startswith('tab::'):
+        # Handle external links. This includes special handling for images and videos which can be embedded (but not downloaded).
+        if attachment['contentType'] == 'reference':
+          url = attachment['contentUrl']
+          if url is None:
+            print('Warning: Attachment is a link but has no valid URL.')
+            print(json.dumps(attachment, indent=2))
+            continue
+          
+          # Handle video links by embedding them.
+          if any([url.endswith(x) for x in supported_video_types.values()]):
+            file_type = os.path.splitext(url)[-1]
+            mime_type = video_ext_to_mime(file_type)
+            if mime_type is None:
+              print('Warning: Attachment has valid video URL but mime type was not found.')
+              print(json.dumps(attachment, indent=2))
+              continue
+            attachment_entry['html'] = f'<video controls><source src=\"{url}\" type=\"{mime_type}\"/></video></br><a href=\"{url}\" target=\"_blank\">Video Link</a>'
+          #end if (video)
+          # Handle image links by embedding them.
+          elif any([url.endswith(x) for x in supported_image_types.values()]):
+            attachment_entry['html'] = f'<img src=\"{url}\" class=\"img-fluid img-thumbnail\" />'
+          #end if (image)
+          # Handle other links.
+          else:
+            name = attachment['name']
+            if name is None:
+              print('Warning: Attachment has a valid URL but no name. Will supplement an unknown name.')
+              print(json.dumps(attachment, indent=2))
+            link_name = name or 'INVALID NAME'
+            attachment_entry['html'] = f'<a href=\"{url}\" target=\"_blank\">ATTACHMENT: {link_name}</a>'
+          #end if (other)
+        #end if (reference)
+
+        # # TODO: Process code snippets.
+        if attachment['contentType'] == 'application/vnd.microsoft.card.codesnippet':
+          print('Code snippet detected but not yet handled.')
+          print(json.dumps(attachment, indent=2))
+          # Don't forget to remove continue once this is filled in.
           continue
 
-        # NOTE: Sometimes the name is empty. I should be ignoring those that cause it, but debug printing just in case.
-        if(attachment_entry['name'] is None):
-          print('! WARNING ! Attachment name is null.')
+        # Check for unhandled items (should have 'html' by now)
+        if 'html' not in attachment_entry:
+          print('WARNING: Unhandled attachment type.')
           print(json.dumps(attachment, indent=2))
           continue
 
-        # Local path to the file relative to the root folder.
-        attachment_entry['path'] = attachments_folder + '/' + attachment_entry['name']
+        # TODO: Handle messageReference type with something like this:
+				# <ul class="list-group">
+				# 	<li class="list-group-item list-group-item-action d-flex justify-content-between align-items-start list-group-item-secondary">
+				# 		<div class="me-auto">
+				# 			<div class="fw-bold">NAME GOES HERE</div>
+				# 			<p>TEXT GOES HERE</p>
+				# 		</div>
+				# 	</li>
+				# </ul>
+        # Actual JSON returned for this attachment:
+        # {
+        #   "id": "1595868979356",
+        #   "contentType": "messageReference",
+        #   "contentUrl": null,
+        #   "content": "{\"messageId\":\"1595868979356\",\"messagePreview\":\"i pasted the ASR path in the command line args field and it did open that ASR. not sure if thats what we're trying to achieve?\",\"messageSender\":{\"application\":null,\"device\":null,\"user\":{\"userIdentityType\":\"aadUser\",\"id\":\"a7d18fd2-24cd-451d-ba7e-701c1e86b38a\",\"displayName\":\"Huw Bowles\"}}}",
+        #   "name": null,
+        #   "thumbnailUrl": null
+        # }
+        #
+        # {
+        #   "id": "1602695865789",
+        #   "contentType": "messageReference",
+        #   "contentUrl": null,
+        #   "content": "{\"messageId\":\"1602695865789\",\"messagePreview\":\"i've revived matts water settings UI and the enabled checkbox works (although a bit more work is required to ensure that it saves reliably). looks cool though\",\"messageSender\":{\"application\":null,\"device\":null,\"user\":{\"userIdentityType\":\"aadUser\",\"id\":\"a7d18fd2-24cd-451d-ba7e-701c1e86b38a\",\"displayName\":\"Huw Bowles\"}}}",
+        #   "name": null,
+        #   "thumbnailUrl": null
+        # }
 
         # Add this attachment to the list of all attachments and add a lookup entry into that based on its ID.
         # These values are used below and later when actually processing and downloading the attachments.
@@ -579,8 +677,6 @@ def get_chat():
 
       # Attachments are inserted with a custom <attachment> tag. This code replaces those tags accordingly.
       all_attachment_tags = re.findall(r"<attachment\s*.*?><\/attachment>", msg_entry['content'])
-      # Build a new HTML tag for each of the attachment entries.
-      new_attachment_tags = []
       for tag in all_attachment_tags:
         tag_id = re.findall(r"id=\"(.+?)\"", tag)[0]
         # We don't capture all attachments, so ignore those that don't have a lookup value.
@@ -588,24 +684,11 @@ def get_chat():
           continue
 
         # Lookup the actual attachment that we saved above based on the ID.
-        original_attachment = all_attachments[attachment_lookup[tag_id]]
-        # Build out several properties for the URL.
-        if original_attachment['link'] is None:
-          print(f'ERROR: Attachment has no link: {original_attachment}')
-          continue
-        use_original_link = any([x in original_attachment['link'] for x in attachment_ignores])
-        attachment_path = original_attachment['link'] if use_original_link else original_attachment['path']
-        attachment_name = original_attachment['name']
-        # If an image extension is in the name, use an <img> tag, otherwise use a standard <a> tag.
-        if any([attachment_path.endswith(x) for x in supported_image_types]):
-          new_attachment_tags.append(f'<img src=\"{attachment_path}\" class=\"img-fluid img-thumbnail\">')
-        else:
-          new_attachment_tags.append(f'<a href=\"{attachment_path}\" target=\"_blank\">ATTACHMENT: {attachment_name}</a>')
-      #end for
-
-      # Replace the original tags with the new tags.
-      for tag, new_tag in zip(all_attachment_tags, new_attachment_tags):
-        msg_entry['content'] = msg_entry['content'].replace(tag, new_tag)
+        attachment = all_attachments[attachment_lookup[tag_id]]
+        # Get the new html from the attachment.
+        attachment_html = attachment['html']
+        # Replace old attachment HTML with the new one.
+        msg_entry['content'] = msg_entry['content'].replace(tag, attachment_html)
       #end for
     #end if include_attachments
 
@@ -622,8 +705,17 @@ def get_chat():
     for idx, attachment in enumerate(all_attachments):
       print(f'    {idx+1}/{len(all_attachments)}...', end='', flush=True)
 
-      should_ignore = any([x in original_attachment['link'] for x in attachment_ignores])
-      if should_ignore:
+      if attachment['should_download'] == False:
+        print("doesn't need downloading.")
+        continue
+
+      url = attachment['url']
+      if url is None or not len(url):
+        print(f'failed as url is null!')
+        print(json.dumps(attachment, indent=2))
+        continue
+
+      if any([x in url for x in attachment_ignores]):
         print('ignored (protected link).')
         continue
 
@@ -631,7 +723,7 @@ def get_chat():
       # att_req = oauth.get(attachment['link'], headers=request_headers())
       # print(att_req)
       # print(att_req.content)
-      print('done!')
+      print('(TODO: implement downloading) done!')
     #end for
     print(f'  Done!')
   #end if
