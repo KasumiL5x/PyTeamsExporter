@@ -667,34 +667,6 @@ def get_chat():
           print(json.dumps(attachment, indent=2))
           continue
 
-        # TODO: Handle messageReference type with something like this:
-				# <ul class="list-group">
-				# 	<li class="list-group-item list-group-item-action d-flex justify-content-between align-items-start list-group-item-secondary">
-				# 		<div class="me-auto">
-				# 			<div class="fw-bold">NAME GOES HERE</div>
-				# 			<p>TEXT GOES HERE</p>
-				# 		</div>
-				# 	</li>
-				# </ul>
-        # Actual JSON returned for this attachment:
-        # {
-        #   "id": "1595868979356",
-        #   "contentType": "messageReference",
-        #   "contentUrl": null,
-        #   "content": "{\"messageId\":\"1595868979356\",\"messagePreview\":\"i pasted the ASR path in the command line args field and it did open that ASR. not sure if thats what we're trying to achieve?\",\"messageSender\":{\"application\":null,\"device\":null,\"user\":{\"userIdentityType\":\"aadUser\",\"id\":\"a7d18fd2-24cd-451d-ba7e-701c1e86b38a\",\"displayName\":\"Huw Bowles\"}}}",
-        #   "name": null,
-        #   "thumbnailUrl": null
-        # }
-        #
-        # {
-        #   "id": "1602695865789",
-        #   "contentType": "messageReference",
-        #   "contentUrl": null,
-        #   "content": "{\"messageId\":\"1602695865789\",\"messagePreview\":\"i've revived matts water settings UI and the enabled checkbox works (although a bit more work is required to ensure that it saves reliably). looks cool though\",\"messageSender\":{\"application\":null,\"device\":null,\"user\":{\"userIdentityType\":\"aadUser\",\"id\":\"a7d18fd2-24cd-451d-ba7e-701c1e86b38a\",\"displayName\":\"Huw Bowles\"}}}",
-        #   "name": null,
-        #   "thumbnailUrl": null
-        # }
-
         # Add this attachment to the list of all attachments and add a lookup entry into that based on its ID.
         # These values are used below and later when actually processing and downloading the attachments.
         all_attachments.append(attachment_entry)
