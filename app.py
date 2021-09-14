@@ -656,10 +656,34 @@ def get_chat():
 
         # TODO: Process code snippets.
         if attachment['contentType'] == 'application/vnd.microsoft.card.codesnippet':
-          print('Code snippet detected but not yet handled.')
-          print(json.dumps(attachment, indent=2))
-          # Don't forget to remove continue once this is filled in.
-          continue
+          snip_content = attachment.get('content')
+          if snip_content is None:
+            print('Warning: Encountered code snippet but content was null. Skipping.')
+            print(json.dumps(attachment, indent=2))
+            continue
+          snip_content = json.loads(snip_content) # Convert JSON string into JSON object.
+
+          snip_url = snip_content.get('codeSnippetUrl')
+          if snip_url is None:
+            print('Warning: Encountered code snippet but codeSnippetUrl was null. Skipping.')
+            print(json.dumps(attachment, indent=2))
+            continue
+
+          # Get the actual snippet data.
+          snip_data = oauth.get(snip_url, headers=request_headers())
+          snip_code = snip_data.content.decode('utf-8') # Hopefully it's all utf-8 compatible!
+
+          # Replace troublesome characters.
+          snip_code = snip_code.replace('&', '&amp;') # NOTE: This MUST be firstg otherwise it will strip other fixes.
+          snip_code = snip_code.replace('<', '&lt;')
+          snip_code = snip_code.replace('>', '&gt;')
+          snip_code = snip_code.replace('\"', '&quot;')
+          snip_code = snip_code.replace('\'', '&apos;')
+          # TODO: Handle more when I can be bothered (e.g., https://wonko.com/post/html-escaping)
+
+          snip_html = f"<pre><code>\n{snip_code}</code></pre>\n"
+          attachment_entry['html'] = snip_html
+        # end if (code snippet)
 
         # Check for unhandled items (should have 'html' by now)
         if 'html' not in attachment_entry:
