@@ -371,6 +371,8 @@ def json_to_html_chat(data):
   html_string += "</head>\n"
   html_string += "<body>\n"
 
+  # Wrapper.
+  html_string += "<div class=\"container text-break\">"
   # Navbar with title and details button.
   html_string += "\t<nav class=\"navbar navbar-light bg-light\">\n"
   html_string += "\t\t<div class=\"container-fluid\">\n"
@@ -418,6 +420,8 @@ def json_to_html_chat(data):
     html_string += "\t\t</li>\n"
   #end
   html_string += "\t</ul>\n\n"
+  # Wrapper end.
+  html_string += "</div>"
 
   # Footer.
   html_string += "\t<script src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/js/bootstrap.bundle.min.js\" integrity=\"sha384-/bQdsTh/da6pkI1MST/rWKFNjaCP5gBSY4sEBT38Q/9RBh9AH40zEOg7Hlq2THRZ\" crossorigin=\"anonymous\"></script>\n"
