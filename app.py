@@ -344,6 +344,92 @@ def get_all_chats():
   return flask.Response(json.dumps(all_chats), mimetype='application/json')
 #end
 
+def get_custom_css():
+  return """
+body {
+  background-color: #DBDBD4;
+}
+.speech-wrapper {
+	background-color: #E5DDD5;
+  padding: 30px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.speech-wrapper .bubble {
+  height: auto;
+  display: inline-block;
+  background: #f5f5f5;
+  border-radius: 4px;
+  box-shadow: 2px 8px 5px rgba(0, 0, 0, 0.15);
+  position: relative;
+  margin: 10px 0 20px 25px;
+	min-width: 350px;
+	/* max-width: 80%; */
+}
+.speech-wrapper .bubble.alt {
+  margin: 10px 25px 20px 0;
+	margin-left: auto;
+}
+.speech-wrapper .bubble.continue {
+  margin: 0 0 20px 60px;
+}
+.speech-wrapper .bubble .txt {
+  padding: 8px 55px 8px 14px;
+}
+.speech-wrapper .bubble .txt .name {
+  font-weight: 600;
+  font-size: 1rem;
+  margin: 0 0 4px;
+  color: #3498db;
+}
+.speech-wrapper .bubble .txt .name span {
+  font-weight: normal;
+  color: #b3b3b3;
+}
+.speech-wrapper .bubble .txt .name.alt {
+  color: #2ecc71;
+}
+.speech-wrapper .bubble .txt .message {
+  font-size: 0.9rem;
+  margin: 0;
+  color: #2b2b2b;
+  padding-right: 10px;
+}
+.speech-wrapper .bubble .txt .timestamp {
+  font-size: 0.9rem;
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  text-transform: uppercase;
+  color: #999;
+}
+.speech-wrapper .bubble .bubble-arrow {
+  position: absolute;
+  width: 0;
+  bottom: 42px;
+  left: -16px;
+  height: 0;
+}
+.speech-wrapper .bubble .bubble-arrow.alt {
+  right: -2px;
+  bottom: 40px;
+  left: auto;
+}
+.speech-wrapper .bubble .bubble-arrow:after {
+  content: "";
+  position: absolute;
+  border: 0 solid transparent;
+  border-top: 9px solid #f5f5f5;
+  border-radius: 0 20px 0;
+  width: 15px;
+  height: 30px;
+  transform: rotate(145deg);
+}
+.speech-wrapper .bubble .bubble-arrow.alt:after {
+  transform: rotate(45deg) scaleY(-1);
+}"""
+
 def json_to_html_chat(data):
   """Takes a data array from within `get_chat` and converts it into a pretty HTML document."""
   html_string = ''
@@ -466,106 +552,6 @@ def json_to_html_chat(data):
   return html_string
 #end
 
-def get_custom_css():
-  return """
-body {
-  background-color: #DBDBD4;
-}
-.speech-wrapper {
-	background-color: #E5DDD5;
-  padding: 30px 40px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-.speech-wrapper .bubble {
-  height: auto;
-  display: inline-block;
-  background: #f5f5f5;
-  border-radius: 4px;
-  box-shadow: 2px 8px 5px rgba(0, 0, 0, 0.15);
-  position: relative;
-  margin: 10px 0 20px 25px;
-	min-width: 350px;
-	/* max-width: 80%; */
-}
-.speech-wrapper .bubble.alt {
-  margin: 10px 25px 20px 0;
-	margin-left: auto;
-}
-.speech-wrapper .bubble.continue {
-  margin: 0 0 20px 60px;
-}
-.speech-wrapper .bubble .txt {
-  padding: 8px 55px 8px 14px;
-}
-.speech-wrapper .bubble .txt .name {
-  font-weight: 600;
-  font-size: 1rem;
-  margin: 0 0 4px;
-  color: #3498db;
-}
-.speech-wrapper .bubble .txt .name span {
-  font-weight: normal;
-  color: #b3b3b3;
-}
-.speech-wrapper .bubble .txt .name.alt {
-  color: #2ecc71;
-}
-.speech-wrapper .bubble .txt .message {
-  font-size: 0.9rem;
-  margin: 0;
-  color: #2b2b2b;
-  padding-right: 10px;
-}
-.speech-wrapper .bubble .txt .timestamp {
-  font-size: 0.9rem;
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  text-transform: uppercase;
-  color: #999;
-}
-.speech-wrapper .bubble .bubble-arrow {
-  position: absolute;
-  width: 0;
-  bottom: 42px;
-  left: -16px;
-  height: 0;
-}
-.speech-wrapper .bubble .bubble-arrow.alt {
-  right: -2px;
-  bottom: 40px;
-  left: auto;
-}
-.speech-wrapper .bubble .bubble-arrow:after {
-  content: "";
-  position: absolute;
-  border: 0 solid transparent;
-  border-top: 9px solid #f5f5f5;
-  border-radius: 0 20px 0;
-  width: 15px;
-  height: 30px;
-  transform: rotate(145deg);
-}
-.speech-wrapper .bubble .bubble-arrow.alt:after {
-  transform: rotate(45deg) scaleY(-1);
-}"""
-
-# TODO: Remove this function.
-def content_type_to_file_ext(content_type):
-  if content_type == 'image/png':
-    return '.png'
-  elif content_type == 'image/jpeg':
-    return '.jpg'
-  elif content_type == 'image/gif':
-    return '.gif'
-  elif content_type == 'image/svg+xml':
-    return '.svg'
-  elif content_type == 'image/webp':
-    return '.webp'
-  else:
-    return None
 supported_image_types = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
