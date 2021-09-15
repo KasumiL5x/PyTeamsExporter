@@ -180,6 +180,43 @@ import time
 @APP.route('/debug_request', methods=['POST'])
 @requires_auth
 def debug_request():
+  flask.session['access_token']['expires_at'] = time.time() - 10
+
+  oauth = get_authorized_oauth()
+  data = flask.request.json['data']
+
+  out = []
+  def the_callback(res):
+    out.extend(res['value'])
+
+  out = query_endpoint(oauth, f'{RESOURCE}{API_VERSION}/me/chats/{data}/messages?$top=50')
+
+  for msg in out['value']:
+    msg_id = msg['id']
+    msg_content = msg['body']['content']
+    hosted_content = query_endpoint(oauth, f'{RESOURCE}{API_VERSION}/chats/{data}/messages/{msg_id}/hostedContents')
+    if hosted_content.get('@odata.count', 0) > 0:
+      for hc_value in hosted_content['value']:
+        hc_id = hc_value['id']
+        hc_url = f'"https://graph.microsoft.com/beta/chats/{data}/messages/{msg_id}/hostedContents/{hc_id}/$value'
+        msg_content = msg_content.replace(hc_url, f'NEWURL{hc_id}')
+        # hc_content = query_endpoint(oauth, f'{RESOURCE}{API_VERSION}/chats/{data}/messages/{msg_id}/hostedContents/{hc_id}')
+        # hc_url = hc_content['@odata.context'] + '/$value'
+        # print(hc_url)
+      print(msg_content)
+      print()
+      # find all 'value' entries of hosted_content in body.content. Can I just download them then store and .replace() the urls?
+    # print(msg['body'])
+    # print()
+  print('done')
+
+  # query_endpoint_recursive(oauth, f'{RESOURCE}{API_VERSION}/me/chats/{data}/messages?$top=50', the_callback, True)
+
+  # for msg in out:
+  #   if len(msg['attachments']) > 0:
+  #     print(json.dumps(msg, indent=2))
+
+  # print(json.dumps(out, indent=2))
   return ''
 #end
 
@@ -550,52 +587,95 @@ def get_chat():
     else:
       msg_entry['content'] = ''
 
-    # Messages can host content such as images (and perhaps videos).
-    # To display these, they need to be downloaded locally and the HTML needs swapping out.
-    # The below code handles <img> tags with hosed content.
-    all_img_tags = re.findall(r"<img\s*.*?>", msg_entry['content'])
-    # Download each of the images from the raw bytes that MSGRAPH provides.
-    hosted_img_index = 0
-    for img_tag in all_img_tags:
-      # This will pull all images (including emoji), so only process those with a MSGRAPH url.
-      if 'graph.microsoft.com' not in img_tag:
-        continue
 
-      print(f'  Downloading hosted image {hosted_img_index+1}...', end='', flush=True)
+    # NOTE: The 'proper' way of handling hostedContents is to use the API, but it frequently hangs when many requests are made.
+    # If this bool is true, it will use this API despite it being slow. If it is false, it will manually scrape and request them.
+    get_hosted_contents_through_api = False
 
-      # Extract and request the actual data.
-      img_src = re.findall(r"src=\"(.+?)\"", img_tag)[0]
-      img_data = query_endpoint(oauth, img_src, json=False)
-      if img_data is None:
-        print('Warning: Hosted image failed to query. Skipping.')
-        continue
+    if get_hosted_contents_through_api:
+      msg_id = msg['id']
+      msg_hosted_content_url = f'{RESOURCE}{API_VERSION}/me/chats/{chat_id}/messages/{msg_id}/hostedContents'
+      # print(f'Querying hosted content...', end='', flush=True)
+      msg_hosted_content = query_endpoint(oauth, msg_hosted_content_url)
+      # print('done!')
+      if msg_hosted_content is not None and msg_hosted_content.get('@odata.count', 0) > 0:
+        msg_hosted_content_items = msg_hosted_content.get('value', [])
+        for hc_item in msg_hosted_content_items:
+          print(f'Downloading hosted content {total_hosted_images}...', end='', flush=True)
 
-      # Create a random filename for the file (reading the type from content-type).
-      img_name = str(uuid.uuid4())
-      img_type = img_data.headers['content-type']
-      file_ext = content_type_to_file_ext(img_type)
-      if file_ext is None:
-        print(f'Warning: Undetected <img> type: {img_type}')
-        continue
-      else:
-        img_name += file_ext
+          hc_id = hc_item['id']
+          hc_url = f'https://graph.microsoft.com/beta/me/chats/{chat_id}/messages/{msg_id}/hostedContents/{hc_id}/$value'
 
-      # Write out the file.
-      with open(attachments_root_folder + img_name, 'wb') as out_file:
-        out_file.write(img_data.content)
+          # Download the actual data.
+          print('query...', end='', flush=True)
+          hc_data = query_endpoint(oauth, hc_url, json=False)
+          if hc_data is None:
+            print(f'Warning: Failed to download hosted content with ID {hc_id}.')
+            continue
 
-      # Swap the src for the local version.
-      img_tag_new = re.sub(r"src=\"(.+?)\"", f"src=\"{attachments_folder}/{img_name}\"", img_tag)
-      # These tags don't have any class, so replace the <img at the start with an appended Bootstrap tag.
-      img_tag_new = re.sub("^<img", "<img class=\"img-fluid img-thumbnail\"", img_tag_new)
-      # Replace the original string.
-      msg_entry['content'] = msg_entry['content'].replace(img_tag, img_tag_new)
+          # Try to figure out the file type.
+          hc_type = hc_data.headers['content-type']
+          hc_ext = img_mime_to_ext(hc_type)
+          if hc_ext is None:
+            hc_ext = video_mime_to_ext(hc_type)
+            if hc_ext is None:
+              print(f'Warning: Unsupported hosted content mime type {hc_type} with ID {hc_id}.')
+              continue
+            #end
+          #end
+          hc_name = str(uuid.uuid4()) + hc_ext
 
-      print('done!')
+          # Write out the actual file.
+          with open(attachments_root_folder + hc_name, 'wb') as out_file:
+            out_file.write(hc_data.content)
 
-      hosted_img_index += 1
-      total_hosted_images += 1
-    #end for
+          # Replace the content URL with this new local URL.
+          msg_entry['content'] = msg_entry['content'].replace(hc_url, f'{attachments_folder}/{hc_name}')
+
+          total_hosted_images += 1
+          print('done!')
+        #end
+      #end
+    #end (get_hosted_contents_through_api)
+    else:
+      msg_img_tags = re.findall(r"<img\s*.*?>", msg_entry['content'])
+      for img_tag in msg_img_tags:
+        # Only process images that have a MSGRAPH url, as hosted content would.
+        if 'graph.microsoft.com' not in img_tag:
+          continue
+        
+        print(f'  Downloading hosted image {total_hosted_images}...', end='', flush=True)
+
+        # Extract and request the actual data.
+        img_src = re.findall(r"src=\"(.+?)\"", img_tag)[0]
+        img_data = query_endpoint(oauth, img_src, json=False)
+        if img_data is None:
+          print('Warning: Hosted image failed to query. Skipping.')
+          continue
+
+        # Try to figure out the file type.
+        img_type = img_data.headers['content-type']
+        img_ext = img_mime_to_ext(img_type)
+        if img_ext is None:
+          print(f'Warning: Undetected hosted image type: {img_type}')
+          continue
+        img_name = str(uuid.uuid4()) + img_ext
+
+        # Write out the actual file.
+        with open(attachments_root_folder + img_name, 'wb') as out_file:
+          out_file.write(img_data.content)
+
+        # Swap the src for the local version.
+        img_tag_new = re.sub(r"src=\"(.+?)\"", f"src=\"{attachments_folder}/{img_name}\"", img_tag)
+        # These tags don't have any class, so replace the <img at the start with an appended Bootstrap tag.
+        img_tag_new = re.sub("^<img", "<img class=\"img-fluid img-thumbnail\"", img_tag_new)
+        # Replace the original string.
+        msg_entry['content'] = msg_entry['content'].replace(img_tag, img_tag_new)
+
+        total_hosted_images += 1
+        print('done!')
+      #end for
+    #end (get_hosted_contents_through_api)
     
     # Build a list of all attachments for this message.
     for attachment in msg['attachments']:
