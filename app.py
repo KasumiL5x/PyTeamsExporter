@@ -5,6 +5,7 @@ import json
 import uuid
 import flask
 from flask.json import jsonify
+from oauthlib import oauth2
 from requests_oauthlib import OAuth2Session
 
 from functools import wraps
@@ -72,6 +73,98 @@ def get_authorized_oauth():
   )
 #end
 
+def request_headers(headers=None):
+  """Returns a dictionary of default HTTP headers for Graph API calls."""
+
+  default_headers = {
+    'SdkVersion': 'sample-python-flask',
+    'x-client-SKU': 'sample-python-flask',
+    'client-request-id': str(uuid.uuid4()),
+    'return-client-request-id': 'true'
+  }
+  if headers:
+    default_headers.update(headers)
+  return default_headers
+#end
+
+def query_endpoint(oauth, endpoint, json=True):
+  try:
+    res = oauth.get(endpoint, headers=request_headers())
+  except oauth2.TokenExpiredError:
+    print(f'Warning: Token expired!')
+    return None
+
+  if not json:
+    return res
+  
+  res = res.json()
+  return None if 'error' in res else res
+#end
+
+def query_endpoint_recursive(oauth, endpoint, callback, print_request_index=False):
+  next_link_key = '@odata.nextLink'
+  next_url = endpoint
+  index = 0
+  while True:
+    if print_request_index:
+      if index == 0:
+        print(f'Request {index} ', end='', flush=True)
+      else:
+        print(f'{index} ', end='', flush=True)
+    #end
+
+    try:
+      # Get this round's data.
+      res = oauth.get(next_url, headers=request_headers()).json()
+    except oauth2.TokenExpiredError:
+      print(f'Warning: Token expired!')
+      break
+    
+    # Check for a bad response.
+    if 'error' in res:
+      break
+
+    # NOTE: The way the below messages are appended is awkward, but here's why it's like this.
+    # There seems to be a bug where the @odata.nextLink repeats forever, creating infinite requests.
+    # Because of this bug, we can't guarantee that data needs adding NOW before the below key check.
+    # If there is no next key, we do need to add the current response and break from the loop.
+    # However, if there is a key, we need to conditionally add the current response based on the above bug.
+    # That's why the below code is a bit fugly, but it does work.
+    # If this is not done, then the latest message will be duplicated at the start...?
+    # TODO: Investigate this in more detail as it may be an oversight in other unused dictionary values.
+    
+    if res.get(next_link_key) is None:
+      callback(res)
+      # If there are no more next links available, we're done.
+      break
+    else:
+      # There seems to be a bug where the same 'next link' is returned. Exit out if this happens.
+      if next_url == res[next_link_key]:
+        break
+      # Otherwise, update the url for the next request.
+      next_url = res[next_link_key]
+      callback(res)
+    
+    index += 1
+  #end
+#end
+
+def requires_auth(f):
+  """Defines a decorator so that functions can require an authorized user to work."""
+
+  @wraps(f)
+  def decorated(*args, **kwargs):
+    # Doesn't have a valid access token.
+    if 'access_token' not in flask.session:
+      return flask.redirect('/login')
+    # Check if it's authorized. This should always work unless the token has expired.
+    if not get_authorized_oauth().authorized:
+      return flask.redirect('/login')
+    return f(*args, **kwargs)
+  #end
+  return decorated
+#end
+
 @APP.route('/')
 def homepage():
   """Render the homepage."""
@@ -81,6 +174,13 @@ def homepage():
     return flask.redirect('/mydata')
 
   return flask.render_template('index.html')
+#end
+
+import time
+@APP.route('/debug_request', methods=['POST'])
+@requires_auth
+def debug_request():
+  return ''
 #end
 
 @APP.route('/login')
@@ -122,22 +222,6 @@ def logout():
   return flask.redirect('/')
 #end
 
-def requires_auth(f):
-  """Defines a decorator so that functions can require an authorized user to work."""
-
-  @wraps(f)
-  def decorated(*args, **kwargs):
-    # Doesn't have a valid access token.
-    if 'access_token' not in flask.session:
-      return flask.redirect('/login')
-    # Check if it's authorized. This should always work unless the token has expired.
-    if not get_authorized_oauth().authorized:
-      return flask.redirect('/login')
-    return f(*args, **kwargs)
-  #end
-  return decorated
-#end
-
 @APP.route('/mydata')
 @requires_auth
 def my_data():
@@ -146,14 +230,13 @@ def my_data():
   oauth = get_authorized_oauth()
 
   # https://docs.microsoft.com/en-us/graph/api/user-get?view=graph-rest-beta&tabs=http
-  base_url = RESOURCE + API_VERSION + '/'
-  user_profile = oauth.get(base_url + 'me', headers=request_headers()).json()
+  user_profile = query_endpoint(oauth, f'{RESOURCE}{API_VERSION}/me')
   # If the request gives an error, try to get the user to login again.
-  if 'error' in user_profile:
+  if user_profile is None:
     return flask.redirect('/login')
 
-  username = user_profile['displayName']
-  email = user_profile['userPrincipalName']
+  username = user_profile.get('displayName', 'INVALID USER')
+  email = user_profile.get('userPrincipalName', 'INVALID EMAIL')
   return flask.render_template('mydata.html', username=username, email=email)
 #end
 
@@ -170,38 +253,18 @@ def get_all_chats():
   # Get this user's display name so that we can find out who they are in a oneOnOne chat.
   # I'd prefer to do this with email, but we have two emails and it seems to be different for account vs. Teams.
   # https://docs.microsoft.com/en-us/graph/api/user-get?view=graph-rest-beta&tabs=http
-  base_url = RESOURCE + API_VERSION + '/'
-  user_profile = oauth.get(base_url + 'me', headers=request_headers()).json()
+  user_profile = query_endpoint(oauth, f'{RESOURCE}{API_VERSION}/me')
+  if user_profile is None or 'displayName' not in user_profile:
+    return jsonify(message='Unable to retrieve user profile.'), 400
   user_name = user_profile['displayName']
 
-  # https://docs.microsoft.com/en-us/graph/api/chat-list?view=graph-rest-beta&tabs=http
-  next_link_key = '@odata.nextLink'
   raw_chats = []
-  base_url = RESOURCE + API_VERSION + '/'
-  next_chat_url = base_url + 'me/chats?$expand=members'
-  req_index = 0
-  while True:
-    if req_index == 0:
-      print(f'  Request {req_index} ', end='', flush=True)
-    else:
-      print(f'{req_index} ', end='', flush=True)
-
-    # Get this round's chats.
-    tmp_chats = oauth.get(next_chat_url, headers=request_headers()).json()
-    if ('error' in tmp_chats) or ('value' not in tmp_chats):
-      break
-
-    # Update raw chats with this request's response.
-    raw_chats.extend(tmp_chats['value'])
-
-    # Process the next link if it's available.
-    if next_link_key not in tmp_chats or tmp_chats[next_link_key] is None:
-      break
-    else:
-      next_chat_url = tmp_chats[next_link_key]
-    
-    req_index += 1
-  #end while
+  def chats_callback(res):
+    if 'value' in res:
+      raw_chats.extend(res['value'])
+      
+  # https://docs.microsoft.com/en-us/graph/api/chat-list?view=graph-rest-beta&tabs=http
+  query_endpoint_recursive(oauth, f'{RESOURCE}{API_VERSION}/me/chats?$expand=members', chats_callback, True)
 
   all_chats = []
 
@@ -371,11 +434,6 @@ def video_ext_to_mime(ext):
   res = [k for k,v in supported_video_types.items() if v == ext]
   return None if not len(res) else res[0]
 
-@APP.route('/debug_request')
-@requires_auth
-def debug_request():
-  return ''
-
 @APP.route('/get_chat', methods=['POST'])
 @requires_auth
 def get_chat():
@@ -385,8 +443,7 @@ def get_chat():
 
   Expected JSON input to this request is:
   {
-    "chat_id": "the_chat_id",
-    "include_attachments": true/false
+    "chat_id": "the_chat_id"
   }
   """
 
@@ -396,57 +453,57 @@ def get_chat():
 
   # Make sure all required keys are present.
   chat_id_key = 'chat_id'
-  include_attachments_key = 'include_attachments'
-  if chat_id_key not in flask.request.json:
-    return jsonify(message=f'Failed to find {chat_id_key} entry.'), 400
-  if include_attachments_key not in flask.request.json:
-    return jsonify(message=f'Failed to find {include_attachments_key} entry.'), 400
-  
-  # Make sure the keys have valid data.
-  chat_id = flask.request.json[chat_id_key]
-  if not len(chat_id):
-    return jsonify(message=f'{chat_id_key} value was empty.'), 400
-  include_attachments = flask.request.json[include_attachments_key]
-  if not isinstance(include_attachments, bool):
-    return jsonify(message=f'{include_attachments_key} value was the wrong type (expected bool).'), 400
+  chat_id = flask.request.json.get(chat_id_key)
+  if not isinstance(chat_id, str) or not len(chat_id):
+    return jsonify(message=f'Bad key {chat_id_key}.'), 400
 
+  # Get an authorized oauth instance.
   oauth = get_authorized_oauth()
 
   print(f'Processing chat {chat_id}')
 
+  # Get this user's display name so that we can find out who they are in a oneOnOne chat.
+  # I'd prefer to do this with email, but we have two emails and it seems to be different for account vs. Teams.
+  # https://docs.microsoft.com/en-us/graph/api/user-get?view=graph-rest-beta&tabs=http
+  user_profile = query_endpoint(oauth, f'{RESOURCE}{API_VERSION}/me')
+  if user_profile is None or 'displayName' not in user_profile:
+    return jsonify(message='Unable to retrieve user profile.'), 400
+  user_name = user_profile['displayName']
+
   # Retrieve the chat metadata.
   # https://docs.microsoft.com/en-us/graph/api/chat-get?view=graph-rest-beta&tabs=http
-  chat_base_url = RESOURCE + API_VERSION + '/'
-  raw_chat = oauth.get(chat_base_url + f'me/chats/{chat_id}?$expand=members', headers=request_headers()).json()
-  if 'error' in raw_chat:
-    print('Chat response contains an error.')
+  raw_chat = query_endpoint(oauth, f'{RESOURCE}{API_VERSION}/me/chats/{chat_id}?$expand=members')
+  if raw_chat is None:
     return jsonify(message='Unable to retrieve chat metadata.'), 400
   
-  # Major failure points are now over, so we can safely create the root folder for this chat now.
-  random_filename = str(uuid.uuid4())
-  root_folder = 'static/files/' + random_filename + '/'
+  # Create the folders for this chat.
   # https://stackoverflow.com/a/50901481
   old_umask = os.umask(0o666)
+  #
+  random_filename = str(uuid.uuid4())
+  root_folder = 'static/files/' + random_filename + '/'
   os.makedirs(root_folder, exist_ok=True)
-  # Repeat for attachments if needed.
+  #
   attachments_folder = 'attachments'
   attachments_root_folder = root_folder + attachments_folder + '/'
-  os.makedirs(attachments_root_folder, exist_ok=True) # NOTE: Always make this as hosted images use the same folder... for now.
+  os.makedirs(attachments_root_folder, exist_ok=True)
+  #
   os.umask(old_umask)
-
-  # Strings in attachment URLs that will force them to be not downloaded and just linked to.
-  attachment_ignores = ['sharepoint.com']
-
   
   # Build chat metadata.
+  chat_topic = raw_chat.get('topic', 'Unnamed Chat')
   chat_members = []
-  for member in raw_chat['members']:
-    member_name = member['displayName']
-    member_email = member['email']
+  for member in raw_chat.get('members', []):
+    member_name = member.get('displayName', 'INVALID NAME')
+    member_email = member.get('email', 'INVALID EMAIL')
     chat_members.append(f'{member_name} ({member_email})')
-  #end
+
+    # If this is a oneOnOne chat and we are NOT adding the current user, generate a new title.
+    if (raw_chat['chatType'] == 'oneOnOne') and (member_name != user_name):
+      chat_topic = f'Chat with {member_name}'
+
   chat_data = {
-    'topic': 'Unnamed Chat' if raw_chat['topic'] is None else raw_chat['topic'],
+    'topic': chat_topic,
     'type': raw_chat['chatType'],
     'when': raw_chat['createdDateTime'],
     'link': raw_chat['webUrl'],
@@ -461,50 +518,13 @@ def get_chat():
 
   print(f'  Processing messages...')
 
-  # https://docs.microsoft.com/en-us/graph/api/chat-list-messages?view=graph-rest-beta&tabs=http
-  next_link_key = '@odata.nextLink'
   raw_messages = []
-  base_url = RESOURCE + API_VERSION + '/'
-  last_msg_url = base_url + f'me/chats/{chat_id}/messages?$top=50'
-  req_index = 0
-  while True:
-    if req_index == 0:
-      print(f'  Request {req_index} ', end='', flush=True)
-    else:
-      print(f'{req_index} ', end='', flush=True)
+  def messages_callback(res):
+    if 'value' in res:
+      raw_messages.extend(res['value'])
 
-    # Get this round's messages.
-    tmp_messages = oauth.get(last_msg_url, headers=request_headers()).json()
-    # If any response fails, just exit out.
-    if ('error' in tmp_messages) or ('value' not in tmp_messages):
-      break
-
-    # NOTE: The way the below messages are appended is awkward, but here's why it's like this.
-    # There seems to be a bug where the @odata.nextLink repeats forever, creating infinite requests.
-    # Because of this bug, we can't guarantee that data needs adding NOW before the below key check.
-    # If there is no next key, we do need to add the current response and break from the loop.
-    # However, if there is a key, we need to conditionally add the current response based on the above bug.
-    # That's why the below code is a bit fugly, but it does work.
-    # If this is not done, then the latest message will be duplicated at the start...?
-    # TODO: Investigate this in more detail as it may be an oversight in other unused dictionary values.
-
-    if next_link_key not in tmp_messages or tmp_messages[next_link_key] is None:
-      # Update the raw messages with this request's response.
-      raw_messages.extend(tmp_messages['value'])
-      # If there are no more next links available, we're done.
-      break
-    else:
-      # There seems to be a bug where the same 'next link' is returned. Exit out if this happens.
-      if last_msg_url == tmp_messages[next_link_key]:
-        break
-      # Otherwise, update the url for the next request.
-      last_msg_url = tmp_messages[next_link_key]
-      # Update the raw messages with this request's response.
-      raw_messages.extend(tmp_messages['value'])
-    #end if
-
-    req_index += 1
-  #end while
+  # https://docs.microsoft.com/en-us/graph/api/chat-list-messages?view=graph-rest-beta&tabs=http
+  query_endpoint_recursive(oauth, f'{RESOURCE}{API_VERSION}/me/chats/{chat_id}/messages?$top=50', messages_callback, True)
   print('')
 
   attachment_lookup = {} # {id:index_in_all_attachments}
@@ -545,7 +565,10 @@ def get_chat():
 
       # Extract and request the actual data.
       img_src = re.findall(r"src=\"(.+?)\"", img_tag)[0]
-      img_data = oauth.get(img_src, headers=request_headers())
+      img_data = query_endpoint(oauth, img_src, json=False)
+      if img_data is None:
+        print('Warning: Hosted image failed to query. Skipping.')
+        continue
 
       # Create a random filename for the file (reading the type from content-type).
       img_name = str(uuid.uuid4())
@@ -574,186 +597,160 @@ def get_chat():
       total_hosted_images += 1
     #end for
     
-    # Each message determines which attachments it includes. We also want them.
-    if include_attachments:
-      # Build a list of all attachments for this message.
-      for attachment in msg['attachments']:
-        # Thumbnails are used for link previews. I'm ignoring these.
-        # Ignoring code snippets for now. Will process them later.
-        ignore_types = ['application/vnd.microsoft.card.thumbnail', 'application/vnd.microsoft.card.adaptive', 'application/vnd.microsoft.card.announcement']
-        if attachment['contentType'] in ignore_types:
+    # Build a list of all attachments for this message.
+    for attachment in msg['attachments']:
+      # Thumbnails are used for link previews. I'm ignoring these.
+      # Ignoring code snippets for now. Will process them later.
+      ignore_types = ['application/vnd.microsoft.card.thumbnail', 'application/vnd.microsoft.card.adaptive', 'application/vnd.microsoft.card.announcement']
+      if attachment['contentType'] in ignore_types:
+        continue
+
+      # print(json.dumps(attachment, indent=2))
+
+      # Links to tab pages of a chat count as attachments and always start with "tab::" in their ID. Ignore them.
+      if attachment['id'].startswith('tab::'):
+        continue
+
+      attachment_entry = {
+        'id': attachment['id'],
+        # TODO: Once I add downloading, I'll likely need to add and later use:
+        # ? 'path': 'path_to_local_file_after_downloading',
+        # Something like: attachment_entry['path'] = attachments_folder + '/' + attachment_entry['name']
+        # If this is true, 'url' should also be set and valid.
+        'should_download': False,
+        'url': ''
+      }
+
+      # Handle external links. This includes special handling for images and videos which can be embedded (but not downloaded).
+      if attachment['contentType'] == 'reference':
+        url = attachment['contentUrl']
+        if url is None:
+          print('Warning: Attachment is a link but has no valid URL.')
+          print(json.dumps(attachment, indent=2))
           continue
+        
+        # Handle video links by embedding them.
+        if any([url.endswith(x) for x in supported_video_types.values()]):
+          file_type = os.path.splitext(url)[-1]
+          mime_type = video_ext_to_mime(file_type)
+          if mime_type is None:
+            print('Warning: Attachment has valid video URL but mime type was not found.')
+            print(json.dumps(attachment, indent=2))
+            continue
+          attachment_entry['html'] = f'<video controls><source src=\"{url}\" type=\"{mime_type}\"/></video></br><a href=\"{url}\" target=\"_blank\">Video Link</a>'
+        #end if (video)
+        # Handle image links by embedding them.
+        elif any([url.endswith(x) for x in supported_image_types.values()]):
+          attachment_entry['html'] = f'<img src=\"{url}\" class=\"img-fluid img-thumbnail\" />'
+        #end if (image)
+        # Handle other links.
+        else:
+          name = attachment['name']
+          if name is None:
+            print('Warning: Attachment has a valid URL but no name. Will supplement an unknown name.')
+            print(json.dumps(attachment, indent=2))
+          link_name = name or 'INVALID NAME'
+          attachment_entry['html'] = f'<a href=\"{url}\" target=\"_blank\">ATTACHMENT: {link_name}</a>'
+        #end if (other)
+      #end if (reference)
 
-        # print(json.dumps(attachment, indent=2))
-
-        # Links to tab pages of a chat count as attachments and always start with "tab::" in their ID. Ignore them.
-        if attachment['id'].startswith('tab::'):
+      # TODO: Process message references.
+      if attachment['contentType'] == 'messageReference':
+        msgref_content = None if 'content' not in attachment else attachment['content']
+        if msgref_content is None:
+          print('Warning: Encountered messageReference but content was null. Skipping.')
+          print(json.dumps(attachment, indent=2))
           continue
+        msgref_content = json.loads(msgref_content) # Convert JSON string into JSON object.
+        msgref_preview = None if 'messagePreview' not in msgref_content else msgref_content['messagePreview']
+        if msgref_preview is None:
+          print('Warning: Encountered messageReference but content.messagePreview was null. Skipping.')
+          print(json.dumps(attachment, indent=2))
+          continue
+        msgref_sender = msgref_content.get('messageSender', {}).get('user', {}).get('displayName', 'INVALID USER')
 
-        attachment_entry = {
-          'id': attachment['id'],
-          # TODO: Once I add downloading, I'll likely need to add and later use:
-          # ? 'path': 'path_to_local_file_after_downloading',
-          # Something like: attachment_entry['path'] = attachments_folder + '/' + attachment_entry['name']
-          # If this is true, 'url' should also be set and valid.
-          'should_download': False,
-          'url': ''
-        }
+        # Build HTML for a nested conversation element. This should play nice with the convert to HTML function.
+        msgref_html  = "<ul class=\"list-group\">\n"
+        msgref_html += "\t<li class=\"list-group-item list-group-item-action d-flex justify-content-between align-items-start list-group-item-secondary\">\n"
+        msgref_html += "\t\t<div class=\"me-auto\">\n"
+        msgref_html += f"\t\t\t<div class=\"fw-bold\">{msgref_sender}</div>\n"
+        msgref_html += f"\t\t\t<p>{msgref_preview}</p>\n"
+        msgref_html += "\t\t</div>\n"
+        msgref_html += "\t</li>\n"
+        msgref_html += "</ul>\n"
+        attachment_entry['html'] = msgref_html
 
-        # Handle external links. This includes special handling for images and videos which can be embedded (but not downloaded).
-        if attachment['contentType'] == 'reference':
-          url = attachment['contentUrl']
-          if url is None:
-            print('Warning: Attachment is a link but has no valid URL.')
-            print(json.dumps(attachment, indent=2))
-            continue
-          
-          # Handle video links by embedding them.
-          if any([url.endswith(x) for x in supported_video_types.values()]):
-            file_type = os.path.splitext(url)[-1]
-            mime_type = video_ext_to_mime(file_type)
-            if mime_type is None:
-              print('Warning: Attachment has valid video URL but mime type was not found.')
-              print(json.dumps(attachment, indent=2))
-              continue
-            attachment_entry['html'] = f'<video controls><source src=\"{url}\" type=\"{mime_type}\"/></video></br><a href=\"{url}\" target=\"_blank\">Video Link</a>'
-          #end if (video)
-          # Handle image links by embedding them.
-          elif any([url.endswith(x) for x in supported_image_types.values()]):
-            attachment_entry['html'] = f'<img src=\"{url}\" class=\"img-fluid img-thumbnail\" />'
-          #end if (image)
-          # Handle other links.
-          else:
-            name = attachment['name']
-            if name is None:
-              print('Warning: Attachment has a valid URL but no name. Will supplement an unknown name.')
-              print(json.dumps(attachment, indent=2))
-            link_name = name or 'INVALID NAME'
-            attachment_entry['html'] = f'<a href=\"{url}\" target=\"_blank\">ATTACHMENT: {link_name}</a>'
-          #end if (other)
-        #end if (reference)
+      # TODO: Process code snippets.
+      if attachment['contentType'] == 'application/vnd.microsoft.card.codesnippet':
+        snip_content = attachment.get('content')
+        if snip_content is None:
+          print('Warning: Encountered code snippet but content was null. Skipping.')
+          print(json.dumps(attachment, indent=2))
+          continue
+        snip_content = json.loads(snip_content) # Convert JSON string into JSON object.
 
-        # TODO: Process message references.
-        if attachment['contentType'] == 'messageReference':
-          msgref_content = None if 'content' not in attachment else attachment['content']
-          if msgref_content is None:
-            print('Warning: Encountered messageReference but content was null. Skipping.')
-            print(json.dumps(attachment, indent=2))
-            continue
-          msgref_content = json.loads(msgref_content) # Convert JSON string into JSON object.
-          msgref_preview = None if 'messagePreview' not in msgref_content else msgref_content['messagePreview']
-          if msgref_preview is None:
-            print('Warning: Encountered messageReference but content.messagePreview was null. Skipping.')
-            print(json.dumps(attachment, indent=2))
-            continue
-          msgref_sender = msgref_content.get('messageSender', {}).get('user', {}).get('displayName', 'INVALID USER')
-
-          # Build HTML for a nested conversation element. This should play nice with the convert to HTML function.
-          msgref_html  = "<ul class=\"list-group\">\n"
-          msgref_html += "\t<li class=\"list-group-item list-group-item-action d-flex justify-content-between align-items-start list-group-item-secondary\">\n"
-          msgref_html += "\t\t<div class=\"me-auto\">\n"
-          msgref_html += f"\t\t\t<div class=\"fw-bold\">{msgref_sender}</div>\n"
-          msgref_html += f"\t\t\t<p>{msgref_preview}</p>\n"
-          msgref_html += "\t\t</div>\n"
-          msgref_html += "\t</li>\n"
-          msgref_html += "</ul>\n"
-          attachment_entry['html'] = msgref_html
-
-        # TODO: Process code snippets.
-        if attachment['contentType'] == 'application/vnd.microsoft.card.codesnippet':
-          snip_content = attachment.get('content')
-          if snip_content is None:
-            print('Warning: Encountered code snippet but content was null. Skipping.')
-            print(json.dumps(attachment, indent=2))
-            continue
-          snip_content = json.loads(snip_content) # Convert JSON string into JSON object.
-
-          snip_url = snip_content.get('codeSnippetUrl')
-          if snip_url is None:
-            print('Warning: Encountered code snippet but codeSnippetUrl was null. Skipping.')
-            print(json.dumps(attachment, indent=2))
-            continue
-
-          # Get the actual snippet data.
-          snip_data = oauth.get(snip_url, headers=request_headers())
-          snip_code = snip_data.content.decode('utf-8') # Hopefully it's all utf-8 compatible!
-
-          # Replace troublesome characters.
-          snip_code = snip_code.replace('&', '&amp;') # NOTE: This MUST be firstg otherwise it will strip other fixes.
-          snip_code = snip_code.replace('<', '&lt;')
-          snip_code = snip_code.replace('>', '&gt;')
-          snip_code = snip_code.replace('\"', '&quot;')
-          snip_code = snip_code.replace('\'', '&apos;')
-          # TODO: Handle more when I can be bothered (e.g., https://wonko.com/post/html-escaping)
-
-          snip_html = f"<pre><code>\n{snip_code}</code></pre>\n"
-          attachment_entry['html'] = snip_html
-        # end if (code snippet)
-
-        # Check for unhandled items (should have 'html' by now)
-        if 'html' not in attachment_entry:
-          print('WARNING: Unhandled attachment type.')
+        snip_url = snip_content.get('codeSnippetUrl')
+        if snip_url is None:
+          print('Warning: Encountered code snippet but codeSnippetUrl was null. Skipping.')
           print(json.dumps(attachment, indent=2))
           continue
 
-        # Add this attachment to the list of all attachments and add a lookup entry into that based on its ID.
-        # These values are used below and later when actually processing and downloading the attachments.
-        all_attachments.append(attachment_entry)
-        attachment_lookup[attachment_entry['id']] = len(all_attachments)-1
-      #end for
-
-      # Attachments are inserted with a custom <attachment> tag. This code replaces those tags accordingly.
-      all_attachment_tags = re.findall(r"<attachment\s*.*?><\/attachment>", msg_entry['content'])
-      for tag in all_attachment_tags:
-        tag_id = re.findall(r"id=\"(.+?)\"", tag)[0]
-        # We don't capture all attachments, so ignore those that don't have a lookup value.
-        if tag_id not in attachment_lookup:
+        # Get the actual snippet data.
+        snip_data = query_endpoint(oauth, snip_url, json=False)
+        if snip_data is None:
+          print('Warning: Failed to query snippet content. Skipping.')
           continue
+        snip_code = snip_data.content.decode('utf-8') # Hopefully it's all utf-8 compatible!
 
-        # Lookup the actual attachment that we saved above based on the ID.
-        attachment = all_attachments[attachment_lookup[tag_id]]
-        # Get the new html from the attachment.
-        attachment_html = attachment['html']
-        # Replace old attachment HTML with the new one.
-        msg_entry['content'] = msg_entry['content'].replace(tag, attachment_html)
-      #end for
-    #end if include_attachments
+        # Replace troublesome characters.
+        snip_code = snip_code.replace('&', '&amp;') # NOTE: This MUST be firstg otherwise it will strip other fixes.
+        snip_code = snip_code.replace('<', '&lt;')
+        snip_code = snip_code.replace('>', '&gt;')
+        snip_code = snip_code.replace('\"', '&quot;')
+        snip_code = snip_code.replace('\'', '&apos;')
+        # TODO: Handle more when I can be bothered (e.g., https://wonko.com/post/html-escaping)
+
+        snip_html = f"<pre><code>\n{snip_code}</code></pre>\n"
+        attachment_entry['html'] = snip_html
+      # end if (code snippet)
+
+      # Check for unhandled items (should have 'html' by now)
+      if 'html' not in attachment_entry:
+        print('WARNING: Unhandled attachment type.')
+        print(json.dumps(attachment, indent=2))
+        continue
+
+      # Add this attachment to the list of all attachments and add a lookup entry into that based on its ID.
+      # These values are used below and later when actually processing and downloading the attachments.
+      all_attachments.append(attachment_entry)
+      attachment_lookup[attachment_entry['id']] = len(all_attachments)-1
+    #end for
+
+    # Attachments are inserted with a custom <attachment> tag. This code replaces those tags accordingly.
+    all_attachment_tags = re.findall(r"<attachment\s*.*?><\/attachment>", msg_entry['content'])
+    for tag in all_attachment_tags:
+      tag_id = re.findall(r"id=\"(.+?)\"", tag)[0]
+      # We don't capture all attachments, so ignore those that don't have a lookup value.
+      if tag_id not in attachment_lookup:
+        continue
+
+      # Lookup the actual attachment that we saved above based on the ID.
+      attachment = all_attachments[attachment_lookup[tag_id]]
+      # Get the new html from the attachment.
+      attachment_html = attachment['html']
+      # Replace old attachment HTML with the new one.
+      msg_entry['content'] = msg_entry['content'].replace(tag, attachment_html)
+    #end for
 
     all_messages.append(msg_entry)
   #end for
 
   print(f'  Total messages: {len(all_messages)}; Total attachments: {len(all_attachments)}; Total hosted content: {total_hosted_images}')
-  if len(all_attachments):
-    print(f'  Processing attachments...')
-    print(f'    Writing attachments.json...', end='', flush=True)
-    with open(root_folder + 'attachments.json', 'w', encoding="utf-8") as out_file:
-      out_file.write(json.dumps(all_attachments, indent=2))
-    print('done!')
-    for idx, attachment in enumerate(all_attachments):
-      print(f'    {idx+1}/{len(all_attachments)}...', end='', flush=True)
 
-      if attachment['should_download'] == False:
-        print("doesn't need downloading.")
-        continue
-
-      url = attachment['url']
-      if url is None or not len(url):
-        print(f'failed as url is null!')
-        print(json.dumps(attachment, indent=2))
-        continue
-
-      if any([x in url for x in attachment_ignores]):
-        print('ignored (protected link).')
-        continue
-
-      # TODO: Download attachments here with failsafe checking (404, 401, etc.).
-      # att_req = oauth.get(attachment['link'], headers=request_headers())
-      # print(att_req)
-      # print(att_req.content)
-      print('(TODO: implement downloading) done!')
-    #end for
-    print(f'  Done!')
-  #end if
+  print(f'    Writing attachments.json...', end='', flush=True)
+  with open(root_folder + 'attachments.json', 'w', encoding="utf-8") as out_file:
+    out_file.write(json.dumps(all_attachments, indent=2))
+  print('done!')
 
   # Concatenate the final data that will be converted and saved out.
   final_data = {
@@ -780,20 +777,6 @@ def get_chat():
 
   # NOTE: I read online that this is safer and I shouldn't use `send_file`. Will look into it later.
   # return flask.send_from_directory('static/files', random_filename, as_attachment=True, max_age=0)
-#end
-
-def request_headers(headers=None):
-  """Returns a dictionary of default HTTP headers for Graph API calls."""
-
-  default_headers = {
-    'SdkVersion': 'sample-python-flask',
-    'x-client-SKU': 'sample-python-flask',
-    'client-request-id': str(uuid.uuid4()),
-    'return-client-request-id': 'true'
-  }
-  if headers:
-    default_headers.update(headers)
-  return default_headers
 #end
 
 if __name__ == '__main__':

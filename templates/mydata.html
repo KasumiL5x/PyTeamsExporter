@@ -109,9 +109,14 @@
 		// DEBUG REQUEST
 		$('#debug_request').click(function(evt) {
 			const endpoint = location.origin + '/debug_request';
+			const data = {
+				'data': chat_ids[3]
+			};
 			$.ajax({
-				type: 'GET',
+				type: 'POST',
 				url: endpoint,
+				data: JSON.stringify(data),
+				contentType: 'application/json', // What we are sending in `data`.
 				contentType: 'application/json',
 				success: function(data) {
 					console.log(data);
