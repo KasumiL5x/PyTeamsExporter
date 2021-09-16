@@ -531,6 +531,12 @@ def get_chat():
           print('Warning: Hosted image failed to query. Skipping.')
           continue
 
+        # It is possible to get an actual error (like 403 FORBIDDEN), so catch those too.
+        img_error_message = img_data.json().get('error').get('message')
+        if img_error_message is not None:
+          print(f'failed ({img_error_message}). Skipping.')
+          continue
+
         # Try to figure out the file type.
         img_type = img_data.headers['content-type']
         img_ext = utils.img_mime_to_ext(img_type)
