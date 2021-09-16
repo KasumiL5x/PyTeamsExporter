@@ -190,7 +190,7 @@ def json_to_html_chat(data):
   html_string += f"\t<title>{header_text} | PyTeamsExporter</title>\n"
   html_string += "\t<meta charset=\"utf-8\">\n"
   html_string += "\t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, shrink-to-fit=no\">\n"
-  html_string += "\t<link href=\"dist/bootstrap.min.css\">\n"
+  html_string += "\t<link href=\"dist/bootstrap.min.css\" rel=\"stylesheet\">\n"
   html_string += "</head>\n"
 
   # Custom CSS for chat style. Inspired by https://codepen.io/8eni/pen/YWoRGm.
