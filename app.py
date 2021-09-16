@@ -12,8 +12,8 @@ from functools import wraps
 import utilities as utils
 
 # Fill these in from your Azure app (see https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app).
-CLIENT_ID = '25c4a000-e26f-40a6-897c-3c79a5ef583a'
-CLIENT_SECRET = '29eZPOzTtsFO.c9PMD0XF~XGphLf~bK6~F'
+CLIENT_ID = 'YOUR_CLIENT_ID'
+CLIENT_SECRET = 'YOUR_CLIENT_SECRET'
 REDIRECT_URI = 'http://localhost:5000/login/authorized'
 SCOPES = [
   "User.Read",
