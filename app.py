@@ -406,7 +406,7 @@ def get_chat():
   os.umask(old_umask)
   
   # Build chat metadata.
-  chat_topic = raw_chat.get('topic', 'Unnamed Chat')
+  chat_topic = raw_chat['topic'] or 'Unnamed Chat'
   chat_members = []
   for member in raw_chat.get('members', []):
     member_name = member.get('displayName', 'INVALID NAME')
