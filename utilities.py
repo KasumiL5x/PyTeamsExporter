@@ -1,3 +1,27 @@
+import os
+import shutil
+
+# Static files that are copied into the output for each chat (used by the HTML below).
+DIST_FOLDER_NAME = 'dist'
+BOOTSTRAP_CSS_SRC = 'static/extra/bootstrap.min.css'
+BOOTSTRAP_CSS_DST = f'{DIST_FOLDER_NAME}/bootstrap.min.css'
+BOOTSTRAP_JS_SRC = 'static/extra/bootstrap.bundle.min.js'
+BOOTSTRAP_JS_DST = f'{DIST_FOLDER_NAME}/bootstrap.bundle.min.js'
+
+def are_extra_files_valid():
+  return os.path.isfile(BOOTSTRAP_CSS_SRC) and os.path.isfile(BOOTSTRAP_JS_SRC)
+
+def copy_extra_to_dst(root_folder):
+  # Make the dist folder.
+  old_umask = os.umask(0o666)
+  os.makedirs(root_folder + DIST_FOLDER_NAME, exist_ok=True)
+  os.umask(old_umask)
+
+  # Copy the files!
+  shutil.copyfile(BOOTSTRAP_CSS_SRC, root_folder + BOOTSTRAP_CSS_DST)
+  shutil.copyfile(BOOTSTRAP_JS_SRC, root_folder + BOOTSTRAP_JS_DST)
+#end
+
 supported_image_types = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
@@ -166,7 +190,7 @@ def json_to_html_chat(data):
   html_string += f"\t<title>{header_text} | PyTeamsExporter</title>\n"
   html_string += "\t<meta charset=\"utf-8\">\n"
   html_string += "\t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, shrink-to-fit=no\">\n"
-  html_string += "\t<link href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/css/bootstrap.min.css\" rel=\"stylesheet\" integrity=\"sha384-F3w7mX95PdgyTmZZMECAngseQB83DfGTowi0iMjiWaeVhAn4FJkqJByhZMI3AhiU\" crossorigin=\"anonymous\">\n"
+  html_string += "\t<link href=\"dist/bootstrap.min.css\" rel=\"stylesheet\" integrity=\"sha384-F3w7mX95PdgyTmZZMECAngseQB83DfGTowi0iMjiWaeVhAn4FJkqJByhZMI3AhiU\" crossorigin=\"anonymous\">\n"
   html_string += "</head>\n"
 
   # Custom CSS for chat style. Inspired by https://codepen.io/8eni/pen/YWoRGm.
@@ -258,7 +282,7 @@ def json_to_html_chat(data):
   html_string += "</div>"
 
   # Footer.
-  html_string += "\t<script src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/js/bootstrap.bundle.min.js\" integrity=\"sha384-/bQdsTh/da6pkI1MST/rWKFNjaCP5gBSY4sEBT38Q/9RBh9AH40zEOg7Hlq2THRZ\" crossorigin=\"anonymous\"></script>\n"
+  html_string += "\t<script src=\"dist/bootstrap.bundle.min.js\" integrity=\"sha384-/bQdsTh/da6pkI1MST/rWKFNjaCP5gBSY4sEBT38Q/9RBh9AH40zEOg7Hlq2THRZ\" crossorigin=\"anonymous\"></script>\n"
   html_string += "</body>\n"
   html_string += "</html>"
 

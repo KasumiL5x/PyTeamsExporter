@@ -368,6 +368,10 @@ def get_chat():
   if not isinstance(chat_id, str) or not len(chat_id):
     return jsonify(message=f'Bad key {chat_id_key}.'), 400
 
+  # Make sure extra files to be copied are present.
+  if not utils.are_extra_files_valid():
+    return jsonify(message=f'Local extra files were not present.'), 400
+
   # Get an authorized oauth instance.
   oauth = get_authorized_oauth()
 
@@ -719,6 +723,9 @@ def get_chat():
   # Convert the dictionary into a pretty HTML page and write that out.
   with open(root_folder + 'chat.html', 'w', encoding="utf-8") as out_file:
     out_file.write(utils.json_to_html_chat(final_data))
+
+  # Write out the extra files that are needed for the HTML to render and behave properly.
+  utils.copy_extra_to_dst(root_folder)
 
   # Create a zip of the root folder.
   print('  Compressing data...', end='', flush=True)
