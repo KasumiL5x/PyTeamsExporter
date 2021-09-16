@@ -190,7 +190,7 @@ def json_to_html_chat(data):
   html_string += f"\t<title>{header_text} | PyTeamsExporter</title>\n"
   html_string += "\t<meta charset=\"utf-8\">\n"
   html_string += "\t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, shrink-to-fit=no\">\n"
-  html_string += "\t<link href=\"dist/bootstrap.min.css\" rel=\"stylesheet\" integrity=\"sha384-F3w7mX95PdgyTmZZMECAngseQB83DfGTowi0iMjiWaeVhAn4FJkqJByhZMI3AhiU\" crossorigin=\"anonymous\">\n"
+  html_string += "\t<link href=\"dist/bootstrap.min.css\">\n"
   html_string += "</head>\n"
 
   # Custom CSS for chat style. Inspired by https://codepen.io/8eni/pen/YWoRGm.
@@ -282,7 +282,7 @@ def json_to_html_chat(data):
   html_string += "</div>"
 
   # Footer.
-  html_string += "\t<script src=\"dist/bootstrap.bundle.min.js\" integrity=\"sha384-/bQdsTh/da6pkI1MST/rWKFNjaCP5gBSY4sEBT38Q/9RBh9AH40zEOg7Hlq2THRZ\" crossorigin=\"anonymous\"></script>\n"
+  html_string += "\t<script src=\"dist/bootstrap.bundle.min.js\"></script>\n"
   html_string += "</body>\n"
   html_string += "</html>"
 
