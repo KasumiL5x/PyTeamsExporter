@@ -52,12 +52,6 @@
 		<!-- Chats table (and easy de/select buttons). -->
 		<button id="chats_select_all" type="button" class="btn btn-dark btn-sm">Select All</button>
 		<button id="chats_select_none" type="button" class="btn btn-dark btn-sm">Select None</button>
-		<div class="btn-group" role="group" aria-label="Basic radio toggle button group">
-			<input id="rad_chat_with_attachments" type="radio" class="btn-check" name="btnradio" autocomplete="off" checked>
-			<label class="btn btn-outline-primary" for="rad_chat_with_attachments">Chat + Attachments</label>
-			<input id="rad_chat_only" type="radio" class="btn-check" name="btnradio" autocomplete="off">
-			<label class="btn btn-outline-primary" for="rad_chat_only">Chat Only</label>
-		</div>
 		<!-- ENABLE THIS TO SEND DEBUG REQUESTS FOR TESTING. -->
 		<!-- <button id="debug_request" type="button" class="btn btn-dark btn-sm">DEBUG REQUEST</button> -->
 		<br/><br/>
@@ -243,16 +237,6 @@
 			evt.preventDefault();
 		});
 
-		function get_include_attachments() {
-			if($('#rad_chat_with_attachments').prop('checked')) {
-				return true;
-			} else if($('#rad_chat_only').prop('checked')) {
-				return false;
-			}
-
-			return false;
-		}
-
 		// Download chats button.
 		$('#download_chats').click(function(evt) {
 			const endpoint = location.origin + '/get_chat';
@@ -284,8 +268,7 @@
 				// Get the chat ID and prepare it for the AJAX request.
 				const chat_id = chat_ids[index];
 				const data = {
-					chat_id: chat_id,
-					include_attachments: get_include_attachments()
+					chat_id: chat_id
 				};
 
 				// https://stackoverflow.com/a/50920334
