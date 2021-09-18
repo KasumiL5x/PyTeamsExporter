@@ -90,9 +90,6 @@
 			new bootstrap.Toast(el, {})
 		});
 
-		// Lookup table for the chat IDs returned from the /get_all_chats GET request.
-		var chat_ids = [];
-
 		// Sign out button.
 		$('#logout').click(function(evt) {
 			const endpoint = location.origin + '/logout';
@@ -104,7 +101,7 @@
 		$('#debug_request').click(function(evt) {
 			const endpoint = location.origin + '/debug_request';
 			const data = {
-				'data': chat_ids[3]
+				'data': ''
 			};
 			$.ajax({
 				type: 'POST',
@@ -150,6 +147,8 @@
 
 			// Create and populate a new row.
 			const row = document.createElement('tr');
+			// Add the chat ID to the row's data.
+			$(row).attr('chatid', item.id);
 			// Checkbox for downloading.
 			const chkRow = create_row_column(row);
 			chkRow.innerHTML = "<input class=\"chat-checkbox form-check-input\" type=\"checkbox\" value=\"\">";
@@ -201,17 +200,14 @@
 
 					// Remove all table entries.
 					clear_chats();
-					// Clear all chat ID lookup values.
-					chat_ids = [];
 
 					// Add all new chat entries and store their IDs in the lookup array.
 					for(var i=0; i < data.length; ++i) {
 						add_chat_entry(data[i]);
-						chat_ids.push(data[i].id);
 					}
 
 					// If we have any actual chats, then enable the download button.
-					if(chat_ids.length > 0) {
+					if(data.length > 0) {
 						$('#download_chats').removeClass('disabled');
 					}
 
@@ -237,15 +233,138 @@
 			evt.preventDefault();
 		});
 
-		// Download chats button.
-		$('#download_chats').click(function(evt) {
-			const endpoint = location.origin + '/get_chat';
+		function download_chat_recursive(index, promise_list) {
+			const all_table_rows = $('#chats_table').find('tbody > tr');
+			if(index >= all_table_rows.length) {
+				// Wait for the final generated list of ajax promises to finish...
+				$.when.apply(null, promise_list).done(function() {
+					console.log("Downloads complete!");
 
-			// If no checkboxes are checked, ignore the request.
-			if($('.chat-checkbox:checked').length == 0) {
+					// Enable all checkboxes again.
+					disable_all_checkboxes(false);
+
+					// Restore the button back to its original state.
+					const download_btn = $('#download_chats');
+					download_btn.html(download_btn.data('original-text'));
+					download_btn.removeClass('disabled');
+
+					// Same for the get chat history button.
+					$("#get_chats").removeClass("disabled");
+				});
+
 				return;
 			}
 
+			const row_checked = $(all_table_rows[index]).find('.chat-checkbox').prop('checked');
+			if(row_checked) {
+				const row_chatid = $(all_table_rows[index]).attr('chatid');
+				if(row_chatid === undefined) {
+					console.log("WARNING: Row " + index + " is missing chatid. Skipping.");
+					download_chat_recursive(index + 1, promise_list);
+				} else {
+					console.log("Downloading chat with ID=" + row_chatid);
+
+					const row_data = {
+						chat_id: row_chatid
+					};
+
+					// https://stackoverflow.com/a/50920334
+					// use this transport for "binary" data type
+					$.ajaxTransport("+binary", function (options, originalOptions, jqXHR) {
+							// check for conditions and support for blob / arraybuffer response type
+							if (window.FormData && ((options.dataType && (options.dataType == 'binary')) || (options.data && ((window.ArrayBuffer && options.data instanceof ArrayBuffer) || (window.Blob && options.data instanceof Blob))))) {
+									return {
+											// create new XMLHttpRequest
+											send: function (headers, callback) {
+													// setup all variables
+													var xhr = new XMLHttpRequest(),
+															url = options.url,
+															type = options.type,
+															async = options.async || true,
+															// blob or arraybuffer. Default is blob
+															dataType = options.responseType || "blob",
+															data = options.data || null,
+															username = options.username || null,
+															password = options.password || null;
+
+													xhr.addEventListener('load', function () {
+															var data = {};
+															data[options.dataType] = xhr.response;
+															// make callback and send data
+															callback(xhr.status, xhr.statusText, data, xhr.getAllResponseHeaders());
+													});
+
+													xhr.open(type, url, async, username, password);
+
+													// setup custom headers
+													for (var i in headers) {
+															xhr.setRequestHeader(i, headers[i]);
+													}
+
+													xhr.responseType = dataType;
+													xhr.send(data);
+											},
+											abort: function () {
+													jqXHR.abort();
+											}
+									};
+							}
+					});
+
+					const endpoint = location.origin + '/get_chat';
+					const this_req = $.ajax({
+						type: 'POST',
+						url: endpoint,
+						data: JSON.stringify(row_data),
+						contentType: 'application/json', // What we are sending in `data`.
+						dataType: 'binary', // What we expect to get back.
+						success: function(res) {
+							// Prepare the response data and ask the browser to save it to file.
+							// https://stackoverflow.com/a/56581061
+							var blob = new Blob([res], {type: 'application/octet-stream'});
+							var url = window.URL.createObjectURL(blob);
+							var link = document.createElement('a');
+							document.body.appendChild(link);
+							link.style = 'display: none';
+							link.href = url;
+							link.download = row_chatid + '.zip';
+							link.click();
+
+							setTimeout(() => {
+								window.URL.revokeObjectURL(url);
+								link.remove();
+							}, 100);
+
+							download_chat_recursive(index + 1, promise_list);
+						},
+						error: function(xhr, msg, err) {
+							// Show an error toast.
+							const json_err = JSON.parse(xhr.responseText || "{\"message\": \"Offline.\"}");
+							const toast_el = $('#toast_downloadchats');
+							toast_el.find('.toast-body').text("Failed to download chats. (" + json_err.message + ")");
+							toast_el.toast('show');
+
+							console.log(xhr);
+
+							download_chat_recursive(index + 1, promise_list);
+						}
+					});
+
+					promise_list.push(this_req);
+				}
+			} else {
+				download_chat_recursive(index + 1, promise_list);
+			}
+		}
+
+		function disable_all_checkboxes(state) {
+			$('.chat-checkbox').each(function(index, el) {
+				$(el).prop('disabled', state);
+			});
+		}
+
+		// Download chats button.
+		$('#download_chats').click(function(evt) {
 			// Change button to (down)loading mode.
 			const btn = $(this);
 			const loadingText = "<span class='spinner-border spinner-border-sm' role='status' aria-hidden='true'></span> Downloading... (this may take a while)";
@@ -258,108 +377,12 @@
 			// Also disable the get chat history button.
 			$("#get_chats").addClass("disabled");
 
-			// For all chat checkboxes...
-			$('.chat-checkbox').each(function(index, el) {
-				const checked = $(el).prop('checked');
-				if(!checked) {
-					return;
-				}
+			// Disable all checkboxes so that the download order can't be changed during the download loop.
+			disable_all_checkboxes(true);
 
-				// Get the chat ID and prepare it for the AJAX request.
-				const chat_id = chat_ids[index];
-				const data = {
-					chat_id: chat_id
-				};
+			// Kick off the download loop with the first element.
+			download_chat_recursive(0, []);
 
-				// https://stackoverflow.com/a/50920334
-				// use this transport for "binary" data type
-				$.ajaxTransport("+binary", function (options, originalOptions, jqXHR) {
-						// check for conditions and support for blob / arraybuffer response type
-						if (window.FormData && ((options.dataType && (options.dataType == 'binary')) || (options.data && ((window.ArrayBuffer && options.data instanceof ArrayBuffer) || (window.Blob && options.data instanceof Blob))))) {
-								return {
-										// create new XMLHttpRequest
-										send: function (headers, callback) {
-												// setup all variables
-												var xhr = new XMLHttpRequest(),
-														url = options.url,
-														type = options.type,
-														async = options.async || true,
-														// blob or arraybuffer. Default is blob
-														dataType = options.responseType || "blob",
-														data = options.data || null,
-														username = options.username || null,
-														password = options.password || null;
-
-												xhr.addEventListener('load', function () {
-														var data = {};
-														data[options.dataType] = xhr.response;
-														// make callback and send data
-														callback(xhr.status, xhr.statusText, data, xhr.getAllResponseHeaders());
-												});
-
-												xhr.open(type, url, async, username, password);
-
-												// setup custom headers
-												for (var i in headers) {
-														xhr.setRequestHeader(i, headers[i]);
-												}
-
-												xhr.responseType = dataType;
-												xhr.send(data);
-										},
-										abort: function () {
-												jqXHR.abort();
-										}
-								};
-						}
-				});
-
-				$.ajax({
-					type: 'POST',
-					url: endpoint,
-					data: JSON.stringify(data),
-					contentType: 'application/json', // What we are sending in `data`.
-					dataType: 'binary', // What we expect to get back.
-					success: function(res) {
-						// Prepare the response data and ask the browser to save it to file.
-						// https://stackoverflow.com/a/56581061
-						var blob = new Blob([res], {type: 'application/octet-stream'});
-						var url = window.URL.createObjectURL(blob);
-						var link = document.createElement('a');
-						document.body.appendChild(link);
-						link.style = 'display: none';
-						link.href = url;
-						link.download = chat_id + '.zip';
-						link.click();
-
-						setTimeout(() => {
-							window.URL.revokeObjectURL(url);
-							link.remove();
-						}, 100);
-
-						// Restore the button back to its original state.
-						btn.html(btn.data('original-text'));
-						btn.removeClass('disabled');
-						// Same for the get chat history button.
-						$("#get_chats").removeClass("disabled");
-					},
-					error: function(xhr, msg, err) {
-						// Restore get chat history button back to its original state.
-						btn.html(btn.data('original-text'));
-						btn.removeClass('disabled');
-						// Same for the get chat history button.
-						$("#get_chats").removeClass("disabled");
-
-						// Show an error toast.
-						const json_err = JSON.parse(xhr.responseText || "{\"message\": \"Offline.\"}");
-						const toast_el = $('#toast_downloadchats');
-						toast_el.find('.toast-body').text("Failed to download chats. (" + json_err.message + ")");
-						toast_el.toast('show');
-
-						console.log(xhr);
-					}
-				});
-			});
 			evt.preventDefault();
 		});
 	</script>
