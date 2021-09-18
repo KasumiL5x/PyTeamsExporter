@@ -56,6 +56,10 @@
 		<!-- <button id="debug_request" type="button" class="btn btn-dark btn-sm">DEBUG REQUEST</button> -->
 		<br/><br/>
 		<div style="max-height: 70vh; overflow: auto;">
+			<div class="input-group mb-3">
+				<span class="input-group-text" id="input_filter_desc">Filter</span>
+				<input type="text" class="form-control" id="input_filter" aria-label="Filter" aria-describedby="input_filter_desc">
+			</div>
 			<table id="chats_table" class="table table-striped table-hover table-responsive">
 				<!-- https://stackoverflow.com/questions/21168521/table-fixed-header-and-scrollable-body -->
 				<thead class="table-dark" style="position: sticky; top: 0; z-index: 1;">
@@ -88,6 +92,23 @@
 		var toastEls = [].slice.call(document.querySelectorAll('.toast'));
 		toastEls.map(function(el) {
 			new bootstrap.Toast(el, {})
+		});
+
+		// Filter table entries.
+		$('#input_filter').on('keyup', function() {
+			const all_table_rows = $('#chats_table').find('tbody > tr');
+			var filter_value = $(this).val().toLowerCase();
+			for(let i=0; i < all_table_rows.length; ++i) {
+				const topic = ($(all_table_rows[i]).children()[1]).innerText.toLowerCase();
+				const type = ($(all_table_rows[i]).children()[2]).innerText.toLowerCase();
+				const members = ($(all_table_rows[i]).children()[3]).innerText.toLowerCase();
+				
+				const matches = (topic.indexOf(filter_value) != -1) ||
+				                (type.indexOf(filter_value) != -1) ||
+												(members.indexOf(filter_value) != -1);
+
+				$(all_table_rows[i]).toggle(matches);
+			}
 		});
 
 		// Sign out button.
