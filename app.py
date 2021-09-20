@@ -10,25 +10,7 @@ from requests_oauthlib import OAuth2Session
 from functools import wraps
 
 import utilities as utils
-
-# Fill these in from your Azure app (see https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app).
-CLIENT_ID = 'YOUR_CLIENT_ID'
-CLIENT_SECRET = 'YOUR_CLIENT_SECRET'
-REDIRECT_URI = 'http://localhost:5000/login/authorized'
-SCOPES = [
-  "User.Read",
-  "Chat.Read",
-  "Files.Read",
-  "offline_access"
-]
-# URLs and endpoints for authorization.
-AUTHORITY_URL = 'https://login.microsoftonline.com/common'
-AUTH_ENDPOINT = '/oauth2/v2.0/authorize'
-TOKEN_ENDPOINT = '/oauth2/v2.0/token'
-# Microsoft Graph API configuration.
-RESOURCE = 'https://graph.microsoft.com/'
-API_VERSION = 'beta' # NOTE: the 'beta' channel is required for the API calls we need to make.
-
+from app_config import *
 
 # Flask initialization.
 APP = flask.Flask(__name__, static_folder='static')
