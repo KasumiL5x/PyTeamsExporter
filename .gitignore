@@ -1,2 +1,4 @@
 /static/files/*
 keys.py
+tests
+__pycache__
