@@ -223,10 +223,16 @@ def login():
 def authorized():
   """Obtains and stores the access token for an authorized login."""
 
-  if flask.session.get('state') and str(flask.session['state']) != str(flask.request.args.get('state')):
+  existing_state = flask.session.get('state')
+
+  if existing_state is None:
+    print('state key was missing from request.')
+    return flask.redirect('/')
+
+  if str(existing_state) != str(flask.request.args.get('state')):
     raise Exception('state returned to redirect URL does not match!')
 
-  oauth = get_blank_oauth(existing_state=flask.session['state'])
+  oauth = get_blank_oauth(existing_state=existing_state)
   
   token = oauth.fetch_token(
     AUTHORITY_URL + TOKEN_ENDPOINT,
