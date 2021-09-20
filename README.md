@@ -6,6 +6,7 @@ This is a simple web application for retrieving all personal Microsoft Teams cha
 Tech stack with Python `3.9.7`:
 
 * `flask` for creating and serving a RESTful API and frontend.
+* `flask-session` for better session support.
 * `requests_oauthlib` for talking to the Microsoft Graph API.
 
 ## Usage

@@ -5,6 +5,7 @@ import json
 import uuid
 import flask
 from flask.json import jsonify
+from flask_session import Session
 from oauthlib import oauth2
 from requests_oauthlib import OAuth2Session
 from functools import wraps
@@ -21,6 +22,9 @@ if APP.secret_key == 'development':
   import os
   os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # allows http requests
   os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'  # allows tokens to contain additional permissions
+
+# Configure the server-side session object.
+Session(APP)
 
 def get_blank_oauth(existing_state=None):
   """Creates a new blank OAuth2Session object with no token. This should be used for creation and authorization."""
