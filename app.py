@@ -352,17 +352,20 @@ def get_chat():
 
   # Broadly sanity check input data type.
   if not flask.request.is_json:
-    return jsonify(message='Input was not JSON.'), 400
+    print('Error: Input was not JSON.')
+    return flask.Response('Input was not JSON.', status=400)
 
   # Make sure all required keys are present.
   chat_id_key = 'chat_id'
   chat_id = flask.request.json.get(chat_id_key)
   if not isinstance(chat_id, str) or not len(chat_id):
-    return jsonify(message=f'Bad key {chat_id_key}.'), 400
+    print(f'Error: Bad key {chat_id_key}.')
+    return flask.Response(f'Bad key {chat_id_key}.', status=400)
 
   # Make sure extra files to be copied are present.
   if not utils.are_extra_files_valid():
-    return jsonify(message=f'Local extra files were not present.'), 400
+    print('Error: Local extra files were not present.')
+    return flask.Response('Error: Local extra files were not present.', status=400)
 
   # Get an authorized oauth instance.
   oauth = get_authorized_oauth()
@@ -374,14 +377,16 @@ def get_chat():
   # https://docs.microsoft.com/en-us/graph/api/user-get?view=graph-rest-beta&tabs=http
   user_profile = query_endpoint(oauth, f'{RESOURCE}{API_VERSION}/me')
   if user_profile is None or 'displayName' not in user_profile:
-    return jsonify(message='Unable to retrieve user profile.'), 400
+    print('Error: Unable to retrieve user profile.')
+    return flask.Response('Unable to retrieve user profile.', status=400)
   user_name = user_profile['displayName']
 
   # Retrieve the chat metadata.
   # https://docs.microsoft.com/en-us/graph/api/chat-get?view=graph-rest-beta&tabs=http
   raw_chat = query_endpoint(oauth, f'{RESOURCE}{API_VERSION}/me/chats/{chat_id}?$expand=members')
   if raw_chat is None:
-    return jsonify(message='Unable to retrieve chat metadata.'), 400
+    print('Error: Unable to retrieve chat metadata.')
+    return flask.Response('Unable to retrieve chat metadata.', status=400)
   
   # Create the folders for this chat.
   # https://stackoverflow.com/a/50901481

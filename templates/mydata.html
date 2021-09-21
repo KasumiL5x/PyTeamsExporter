@@ -308,11 +308,26 @@
 															username = options.username || null,
 															password = options.password || null;
 
+													xhr.onreadystatechange = function() {
+														// Change the response type if the HTTP code doesn't succeed (as I send a string back).
+														// https://stackoverflow.com/a/29039823
+														if(xhr.readyState == 2) {
+															if(xhr.status != 200) {
+																xhr.responseType = "text";
+															}
+														}
+													};
+
 													xhr.addEventListener('load', function () {
 															var data = {};
 															data[options.dataType] = xhr.response;
-															// make callback and send data
-															callback(xhr.status, xhr.statusText, data, xhr.getAllResponseHeaders());
+															
+															if(xhr.status == 200) {
+																callback(xhr.status, xhr.statusText, data, xhr.getAllResponseHeaders());
+															} else {
+																// Note how I send responseText here instead of statusText. Could probably combine this above but whatever.
+																callback(xhr.status, xhr.responseText, data, xhr.getAllResponseHeaders());
+															}
 													});
 
 													xhr.open(type, url, async, username, password);
@@ -360,9 +375,9 @@
 						},
 						error: function(xhr, msg, err) {
 							// Show an error toast.
-							const json_err = JSON.parse(xhr.responseText || "{\"message\": \"Offline.\"}");
+							const error_str = err || "Offline.";
 							const toast_el = $('#toast_downloadchats');
-							toast_el.find('.toast-body').text("Failed to download chats. (" + json_err.message + ")");
+							toast_el.find('.toast-body').text("Failed to download chats. (" + error_str + ")");
 							toast_el.toast('show');
 
 							console.log(xhr);
