@@ -13,7 +13,7 @@ def are_extra_files_valid():
 
 def copy_extra_to_dst(root_folder):
   # Make the dist folder.
-  old_umask = os.umask(0o666)
+  old_umask = os.umask(0o000)
   os.makedirs(root_folder + DIST_FOLDER_NAME, exist_ok=True)
   os.umask(old_umask)
 

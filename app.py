@@ -385,7 +385,7 @@ def get_chat():
   
   # Create the folders for this chat.
   # https://stackoverflow.com/a/50901481
-  old_umask = os.umask(0o666)
+  old_umask = os.umask(0o000)
   #
   random_filename = str(uuid.uuid4())
   root_folder = 'static/files/' + random_filename + '/'
@@ -742,9 +742,10 @@ def get_chat():
 
 if __name__ == '__main__':
   # Make sure the static/files directory definitely exists upon start.
-  static_files_path = 'static/files/'
+  static_files_path = './static/files/'
   # https://stackoverflow.com/a/50901481
-  old_umask = os.umask(0o666)
+  # https://www.systutorials.com/in-python-os-makedirs-with-0777-mode-does-not-give-others-write-permission/
+  old_umask = os.umask(0o000)
   os.makedirs(static_files_path, exist_ok=True)
   os.umask(old_umask)
 
