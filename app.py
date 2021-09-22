@@ -415,6 +415,7 @@ def get_chat():
       chat_topic = f'Chat with {member_name}'
 
   chat_data = {
+    'version': EXPORT_VERSION,
     'topic': chat_topic,
     'type': raw_chat['chatType'],
     'when': raw_chat['createdDateTime'],
@@ -617,7 +618,7 @@ def get_chat():
         #end if (other)
       #end if (reference)
 
-      # TODO: Process message references.
+      # Process message references.
       if attachment['contentType'] == 'messageReference':
         msgref_content = None if 'content' not in attachment else attachment['content']
         if msgref_content is None:
@@ -643,7 +644,7 @@ def get_chat():
         msgref_html += "</ul>\n"
         attachment_entry['html'] = msgref_html
 
-      # TODO: Process code snippets.
+      # Process code snippets.
       if attachment['contentType'] == 'application/vnd.microsoft.card.codesnippet':
         snip_content = attachment.get('content')
         if snip_content is None:

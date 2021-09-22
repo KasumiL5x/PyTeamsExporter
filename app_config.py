@@ -20,3 +20,6 @@ TOKEN_ENDPOINT = '/oauth2/v2.0/token'
 RESOURCE = 'https://graph.microsoft.com/'
 # NOTE: the 'beta' channel is required for the API calls we need to make.
 API_VERSION = 'beta'
+
+# Version metadata for JSON output.
+EXPORT_VERSION = '0.1'
