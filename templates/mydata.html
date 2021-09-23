@@ -47,7 +47,16 @@
 		<!-- Main buttons. -->
 		<button id="get_chats" class="btn btn-primary btn-lg" type="button">Get Chat History</button>
 		<button id="download_chats" class="btn btn-success btn-lg disabled" type="button">Download Selected Chats</button>
+
 		<br/><br/>
+
+		<!-- Extra options. -->
+		<div class="form-check">
+			<input class="form-check-input" type="checkbox" id="chk_friendlynames">
+			<label class="form-check-label" for="chk_friendlynames">Name ZIP files after chat topic <strong>(experimental)</strong></label>
+		</div>
+
+		<br/>
 
 		<div class="alert alert-warning" role="alert">
 			<h4 class="alert-heading">Warning</h4>
@@ -295,6 +304,11 @@
 						chat_id: row_chatid
 					};
 
+					const useFriendlyName = $("#chk_friendlynames").prop("checked");
+					let friendlyName = $(all_table_rows[index]).find("td")[1].innerText; // Second <td> is the topic.
+					// Replaces all non alphanumeric characters with _ then trims multiple _.
+					friendlyName = friendlyName.replace(/[^a-z0-9]/gi, '_').replace(/_{2,}/g, '_');
+
 					// https://stackoverflow.com/a/50920334
 					// use this transport for "binary" data type
 					$.ajaxTransport("+binary", function (options, originalOptions, jqXHR) {
@@ -369,7 +383,7 @@
 							document.body.appendChild(link);
 							link.style = 'display: none';
 							link.href = url;
-							link.download = row_chatid + '.zip';
+							link.download = (useFriendlyName ? friendlyName : row_chatid) + '.zip';
 							link.click();
 
 							setTimeout(() => {
