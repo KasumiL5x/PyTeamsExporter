@@ -159,7 +159,11 @@
 		// Select all chats button.
 		$('#chats_select_all').click(function(evt) {
 			$('.chat-checkbox').each(function(index, el) {
-				$(el).prop('checked', true);
+				if($(el).parent().parent().css('display') == 'none') { // Messy, but this gets the parent <tr>.
+					$(el).prop('checked', false);
+				} else {
+					$(el).prop('checked', true);
+				}
 			});
 			evt.preventDefault();
 		});
@@ -167,7 +171,10 @@
 		// Select no chats button.
 		$('#chats_select_none').click(function(evt) {
 			$('.chat-checkbox').each(function(index, el) {
-				$(el).prop('checked', false);
+				// Only change those that are visible.
+				if($(el).parent().parent().css('display') != 'none') { // Messy, but this gets the parent <tr>.
+					$(el).prop('checked', false);
+				}
 			});
 			evt.preventDefault();
 		});
